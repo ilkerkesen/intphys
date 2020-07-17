@@ -61,23 +61,36 @@ class Vocab(object):
         x = [x2i.get(xi, x2i.get(UNK)) for xi in x]
         return x
 
+    def __len__(self):
+        return len(self.w2i)
+
 
 class IntuitivePhysicsDataset(data.Dataset):
     def __init__(self, datadir, split="train"):
-        self.read_jsonfile(datadir, split)
+        self.split = split
+        self.datadir = datadir
+        self.read_jsonfile()
         self.build_vocabs()
+        self.build_split()
 
-    def read_jsonfile(self, datadir, split):
-        with open(osp.join(datadir, "dataset.json")) as f:
-            json_data = json.load(f)
-        simulations = list(filter(lambda x: x["split"] == split, json_data))
-        self.questions = []
-        for sim in simulations:
-            self.questions.extend(sim["questions"]["questions"])
+    def read_jsonfile(self):
+        with open(osp.join(self.datadir, "dataset.json")) as f:
+            self.json_data = json.load(f)
 
     def build_vocabs(self):
-        self.question_vocab = Vocab([x['question'] for x in self.questions])
-        self.answer_vocab = Vocab([x['answer'] for x in self.questions])
+        simulations = filter(lambda x: x["split"] == "train", self.json_data)
+        questions = []
+        for sim in simulations:
+            questions.extend(sim["questions"]["questions"])
+        self.question_vocab = Vocab([x['question'] for x in questions])
+        self.answer_vocab = Vocab([x['answer'] for x in questions])
+
+    def build_split(self):
+        self.questions = []
+        simulations = filter(
+            lambda x: x["split"] == self.split, self.json_data)
+        for sim in simulations:
+            self.questions.extend(sim["questions"]["questions"])
 
     def __len__(self):
         return len(self.questions)
@@ -92,8 +105,8 @@ class IntuitivePhysicsDataset(data.Dataset):
 def collate_fn(unsorted_batch):
     batch = sorted(unsorted_batch, key=lambda x: len(x[0]), reverse=True)
     batchsize, longest = len(batch), len(batch[0][0])
-    questions = torch.zeros((batchsize, longest), dtype=torch.long)
+    questions = torch.zeros((longest, batchsize), dtype=torch.long)
     for (i, (question, _)) in enumerate(batch):
-        questions[i, -len(question):] = question
-    answers = torch.cat([answer for (_, answer) in batch]).unsqueeze(1)
+        questions[-len(question):, i] = question
+    answers = torch.cat([answer for (_, answer) in batch])
     return (questions, answers)
