@@ -1,89 +1,69 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
+import os.path as osp
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
+import hydra
 
 import intphys
 from intphys.data import IntuitivePhysicsDataset, collate_fn
 from intphys.model.baseline import BlindBaseline
+from intphys.experiment import Experiment
+
+CONFIG_DIR = osp.abspath(osp.join(__file__, "../..", "config"))
+
+@hydra.main(config_path=osp.join(CONFIG_DIR, "train.yaml"), strict=False)
+def train(config):
+    config = pl.utilities.parsing.AttributeDict(config)
+    pl.seed_everything(config["seed"])
+
+    # load data
+    datadir = osp.abspath(osp.expanduser(config["data"]["path"]))
+    train_data = IntuitivePhysicsDataset(datadir, split="train")
+    val_data = IntuitivePhysicsDataset(datadir, split="validation")
+    train_dataloader = DataLoader(train_data,
+                                  shuffle=True,
+                                  collate_fn=collate_fn,
+                                  **config["data"]["loader"])
+    val_dataloader = DataLoader(val_data,
+                                shuffle=False,
+                                collate_fn=collate_fn,
+                                **config["data"]["loader"])
+
+    log_dir = osp.abspath(osp.expanduser(config["logger"]["dir"]))
+    logger = pl.loggers.TensorBoardLogger(
+        log_dir, name=config["model"]["architecture"])
+    save_path = osp.join(logger.log_dir, "checkpoints/{epoch:03d}")
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        filepath=save_path, **config["checkpoint"])
+    trainer = pl.Trainer(logger=logger,
+                         checkpoint_callback=checkpoint_callback,
+                         **config["trainer"])
+
+    if config["model"].get("input_size") is None:
+        config["model"]["input_size"] = len(train_data.question_vocab)
+    if config["model"].get("output_size") is None:
+        config["model"]["output_size"] = len(train_data.answer_vocab)
+
+    model = Experiment(config)
+    trainer.fit(
+        model,
+        train_dataloader=train_dataloader,
+        val_dataloaders=val_dataloader)
+
+    test_data = IntuitivePhysicsDataset(datadir, split="test")
+    test_dataloader = DataLoader(test_data,
+                                 shuffle=False,
+                                 collate_fn=collate_fn,
+                                 **config["data"]["loader"])
+    trainer.test(test_dataloaders=test_dataloader)
 
 
-DATADIR = "/kuacc/users/ikesen16/data/intphys/Dataset100/"
-
-
-class Experiment(pl.LightningModule):
-    def __init__(self, config):
-        super(Experiment, self).__init__()
-        self.config = config
-        self.model = None
-        self.criterion = nn.CrossEntropyLoss()
-
-    def forward(self, x):
-        return self.model(x)
-
-    def training_step(self, batch, batch_index):
-        questions, answers = batch
-        output = self(questions)
-        loss = self.criterion(output, answers)
-        tensorboard_logs = {"train_loss": loss.item()}
-        return {"loss": loss, "log": tensorboard_logs}
-
-    def validation_step(self, batch, batch_index):
-        questions, answers = batch
-        output = self(questions)
-        _, predictions = torch.max(output, 1)
-        correct = (answers == predictions).sum()
-        num_instances = torch.tensor(answers.size())
-        return {"correct": correct, "num_instances": num_instances}
-
-    def validation_epoch_end(self, outputs):
-        correct = torch.stack([x["correct"] for x in outputs]).sum()
-        num_instances = sum([x["num_instances"] for x in outputs])
-        acc = correct.float() / num_instances
-        tensorboard_logs = {"val_accuracy": acc}
-        print("val_accuracy={}".format(acc))
-        return {"val_accuracy": acc, "log": tensorboard_logs}
-
-    def train_dataloader(self):
-        loader = DataLoader(
-            self.data,
-            batch_size=self.config["experiment"]["batch_size"],
-            pin_memory=False,
-            num_workers=self.config["experiment"]["num_workers"],
-            collate_fn=collate_fn,
-            shuffle=self.config["experiment"]["shuffle"])
-        return loader
-
-    def val_dataloader(self):
-        data = IntuitivePhysicsDataset(DATADIR, split="validation")
-        loader = DataLoader(
-            data,
-            batch_size=self.config["experiment"]["batch_size"],
-            pin_memory=False,
-            num_workers=self.config["experiment"]["num_workers"],
-            collate_fn=collate_fn,
-            shuffle=False)
-        return loader
-
-
-    def setup(self, stage):
-        self.data = IntuitivePhysicsDataset(DATADIR, split="train")
-        self.config["model"]["input_size"] = len(self.data.question_vocab)
-        self.config["model"]["output_size"] = len(self.data.answer_vocab)
-        self.model = BlindBaseline(self.config["model"])
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.model.parameters())
-
-
-config = {
-    "model": {"hidden_size": 128, "embed_size": 128},
-    "experiment": {"batch_size": 64, "num_workers": 0, "shuffle": True}
-}
-trainer = pl.Trainer(gpus=1)
-experiment = Experiment(config)
-trainer.fit(experiment)
+if __name__ == "__main__":
+    train()
