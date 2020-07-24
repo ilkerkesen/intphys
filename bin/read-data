@@ -1,0 +1,18 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import intphys.data
+from torch.utils.data import DataLoader
+
+DATADIR = "/kuacc/users/ikesen16/data/intphys/Dataset100/"
+
+def prepare_loader(split="train"):
+    data = intphys.data.IntuitivePhysicsDataset(DATADIR, split=split)
+    loader = DataLoader(data, batch_size=5, pin_memory=False, num_workers=0,
+                        collate_fn=intphys.data.collate_fn, shuffle=False)
+    return loader
+
+loader = prepare_loader()
+for (i,batch) in enumerate(loader):
+    print("i={}".format(i))
+    import ipdb; ipdb.set_trace()

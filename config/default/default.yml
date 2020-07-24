@@ -1,0 +1,3 @@
+defaults:
+  - model: blind-baseline
+  - experiment:

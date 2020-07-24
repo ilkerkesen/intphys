@@ -6,4 +6,5 @@ dependencies:
   - pip:
       - -r requirements.txt -f https://download.pytorch.org/whl/torch_stable.html
       - ipdb
+      - -hydra-core
       - -e .

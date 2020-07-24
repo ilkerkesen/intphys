@@ -1,0 +1,29 @@
+# hydra related
+hydra:
+  run:
+    dir: .
+
+# experiment
+seed: 1
+trainer:
+  gpus: 1
+  max_epochs: 50
+
+# logger (tensorboard)
+logger:
+  dir: ~/logs/intphys
+
+# checkpoint
+checkpoint:
+  save_top_k: 1
+  save_last: true
+  verbose: true
+  monitor: "val_accuracy"
+  mode: "max"
+  prefix: ""
+
+# model & data
+defaults:
+  - model: BlindBaseline
+  - data: Dataset100
+  - hydra/job_logging: disabled
