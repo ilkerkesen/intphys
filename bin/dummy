@@ -1,0 +1,50 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import os
+import os.path as osp
+
+import torch
+import torch.nn as nn
+from torch.nn import functional as F
+from torch.utils.data import DataLoader
+import pytorch_lightning as pl
+import hydra
+
+import intphys
+from intphys.data import IntuitivePhysicsDataset, collate_fn
+from intphys.experiment import Experiment
+
+
+CONFIG_DIR = osp.abspath(osp.join(__file__, "../..", "config"))
+
+
+@hydra.main(config_path=osp.join(CONFIG_DIR, "train.yaml"), strict=False)
+def train(config):
+    config = pl.utilities.parsing.AttributeDict(config)
+    pl.seed_everything(config["seed"])
+
+    # load data
+    datadir = osp.abspath(osp.expanduser(config["data"]["path"]))
+    train_data = IntuitivePhysicsDataset(datadir, split="train")
+    vocab = train_data.answer_vocab
+    counts = [(k,v) for (k,v) in vocab.count_dict.items()]
+    counts.sort(key=lambda x: x[1], reverse=True)
+    most_frequent_answer, num_occur = counts[0]
+    idx = vocab.w2i[most_frequent_answer]
+    print("Most frequent answer is {} and it occurs {} / {} times".format(
+        most_frequent_answer, num_occur, len(train_data)))
+    val_data = IntuitivePhysicsDataset(datadir, split="validation")
+    val_acc = 0
+    for x in val_data:
+        val_acc += x[1].item() == idx
+    print("val_acc={}".format(float(val_acc / len(val_data))))
+    test_data = IntuitivePhysicsDataset(datadir, split="test")
+    test_acc = 0
+    for x in test_data:
+        test_acc += x[1].item() == idx
+    print("test_acc={}".format(float(test_acc / len(test_data))))
+
+
+if __name__ == "__main__":
+    train()
