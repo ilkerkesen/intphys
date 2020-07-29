@@ -1,0 +1,19 @@
+model:
+  architecture: null
+  hidden_size: 128
+  embed_size: 128
+  input_size: null
+  output_size: null
+  convnet:
+    architecture: ShallowCNN
+    num_channels: 16
+    num_layers: 3
+    input_width: 256
+    input_height: 256
+    kernel_size: 5
+    stride: 2
+  mlp:
+    activation: relu
+    num_layers: 1
+    hidden_size: 64
+    input_size: null

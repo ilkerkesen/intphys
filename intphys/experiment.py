@@ -17,12 +17,12 @@ class Experiment(pl.LightningModule):
         self.criterion = nn.CrossEntropyLoss()
         self.save_hyperparameters(self.config)
 
-    def forward(self, x):
-        return self.model(x)
+    def forward(self, simulation, question, **kwargs):
+        return self.model(simulation ,question, **kwargs)
 
     def training_step(self, batch, batch_index):
-        questions, answers = batch
-        output = self(questions)
+        (simulations, questions, kwargs), (answers,) = batch
+        output = self(simulations, questions, **kwargs)
         loss = self.criterion(output, answers)
         _, predictions = torch.max(output, 1)
         acc = (predictions == answers).float().mean()
@@ -49,8 +49,8 @@ class Experiment(pl.LightningModule):
         return self.calculate_accuracy(outputs, split="test")
 
     def batch_accuracy(self, batch, batch_index):
-        questions, answers = batch
-        output = self(questions)
+        (simulations, questions, kwargs), (answers,) = batch
+        output = self(simulations, questions, **kwargs)
         _, predictions = torch.max(output, 1)
         correct = (answers == predictions).sum()
         num_instances = torch.tensor(answers.size(), device=self.device).float()
