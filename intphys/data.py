@@ -4,9 +4,12 @@ import os
 import os.path as osp
 import json
 import re
+from enum import IntEnum
 
 import torch
 import torch.utils.data as data
+from torchvision.io import read_video, read_video_timestamps
+from torchvision.transforms import Lambda
 import numpy as np
 
 
@@ -17,6 +20,33 @@ PAD = "<PAD>"
 PUNCTUATION_REGEX = re.compile(r"([a-zA-Z0-9]+)(\W)")
 def tokenize_sentence(sentence):
     return PUNCTUATION_REGEX.sub(r"\g<1> \g<2>", sentence.lower()).split()
+
+
+def rearrange_dimensions(frames):
+    # make channel dimension 1st dimension
+    new_frames = frames.unsqueeze(0).transpose(0, -1).squeeze(-1)
+
+    # remove depth in case of single frame
+    C, D, H, W = new_frames.shape
+    new_frames = new_frames.squeeze() if D == 1 else new_frames
+
+    return new_frames
+
+
+class SimulationInput(IntEnum):
+    NO_FRAMES = 0
+    FIRST_FRAME = 1
+    LAST_FRAME = 2
+    FIRST_AND_LAST_FRAMES = 3
+    ALL_FRAMES = 4
+    MANY_FRAMES = 5
+
+    def from_string(obj):
+        if isinstance(obj, int) or isinstance(obj, SimulationInput):
+            return SimulationInput(obj)
+        obj = "SimulationInput.{}".format(obj)
+        symbol = eval(obj)
+        return SimulationInput(symbol)
 
 
 class Vocab(object):
@@ -66,9 +96,17 @@ class Vocab(object):
 
 
 class IntuitivePhysicsDataset(data.Dataset):
-    def __init__(self, datadir, split="train"):
+    def __init__(
+            self, path,
+            split="train",
+            simulation=SimulationInput.NO_FRAMES,
+            normalization=Lambda(lambda x: 2. * (x/255.) - 1.),
+            transform=None):
+        self.datadir = osp.abspath(osp.expanduser(path))
         self.split = split
-        self.datadir = datadir
+        self.sim_input = SimulationInput.from_string(simulation)
+        self.transform = transform
+        self.normalize = normalization
         self.read_jsonfile()
         self.build_vocabs()
         self.build_split()
@@ -92,21 +130,103 @@ class IntuitivePhysicsDataset(data.Dataset):
         for sim in simulations:
             self.questions.extend(sim["questions"]["questions"])
 
+    def read_simulation(self, item):
+        sim_input = str(self.sim_input).split(".")[1]
+        sim_func = eval("self.read_{}".format(sim_input.lower()))
+        return sim_func(item)
+
+    def read_first_frame(self, item):
+        filename = item["video_filename"]
+        video_path = osp.abspath(osp.join(self.datadir, "..", filename))
+        first_timestamp = read_video_timestamps(
+            video_path, pts_unit="sec")[0][0]
+        first_frame = read_video(
+            video_path,
+            pts_unit="sec",
+            start_pts=first_timestamp,
+            end_pts=first_timestamp)[0]
+        return first_frame
+
+    def read_last_frame(self, item):
+        filename = item["video_filename"]
+        video_path = osp.abspath(osp.join(self.datadir, "..", filename))
+        last_timestamp = read_video_timestamps(
+            video_path, pts_unit="sec")[0][-1]
+        last_frame = read_video(
+            video_path,
+            pts_unit="sec",
+            start_pts=last_timestamp,
+            end_pts=last_timestamp)[0]
+        return last_frame
+
+    def read_first_and_last_frames(self, item):
+        first_frame = self.read_first_frame(item)
+        last_frame = self.read_first_frame(item)
+        return (first_frame, last_frame)
+
+    def read_no_frames(self, item):
+        return torch.zeros(1)
+
+    def postprocess_simulation(self, simulation):
+        processed = rearrange_dimensions(simulation)
+
+        # normalization
+        if self.normalize is not None:
+            processed = self.normalize(processed)
+
+        # transformation after normalization
+        if self.transform is not None:
+            processed = self.transform(processed)
+
+        # make it appropriate for minibatching
+        processed = processed.unsqueeze(0)
+
+        return processed
+
     def __len__(self):
         return len(self.questions)
 
     def __getitem__(self, idx):
         item = self.questions[idx]
+        simulation = self.read_simulation(item)
+        if self.sim_input == SimulationInput.NO_FRAMES:
+            simulation = (simulation, )
+        elif isinstance(simulation, torch.Tensor):
+            simulation = (self.postprocess_simulation(simulation),)
+        elif isinstance(simulation, tuple):
+            simulation = tuple(
+                self.postprocess_simulation(x) for x in simulation)
         question = self.question_vocab[item["question"]]
         answer = self.answer_vocab[tokenize_sentence(str(item["answer"]))]
-        return (torch.tensor(question), torch.tensor(answer))
+        item_dict = {"simulation": simulation,
+                     "question": torch.tensor(question),
+                     "answer": torch.tensor(answer)}
+        return item_dict
 
 
 def collate_fn(unsorted_batch):
-    batch = sorted(unsorted_batch, key=lambda x: len(x[0]), reverse=True)
-    batchsize, longest = len(batch), len(batch[0][0])
+    batch = sorted(unsorted_batch,
+                   key=lambda x: len(x["question"]),
+                   reverse=True)
+
+    # question batching
+    batchsize, longest = len(batch), len(batch[0]["question"])
     questions = torch.zeros((longest, batchsize), dtype=torch.long)
-    for (i, (question, _)) in enumerate(batch):
+    for (i, instance) in enumerate(batch):
+        question = instance["question"]
         questions[-len(question):, i] = question
-    answers = torch.cat([answer for (_, answer) in batch])
-    return (questions, answers)
+
+    # answer batching
+    answers = torch.cat([instance["answer"] for instance in batch])
+
+    # simulation batching
+    num_simulations = len(batch[0]["simulation"])
+    helper = lambda i: torch.cat([x["simulation"][i] for x in batch], dim=0)
+    simulations = torch.cat([helper(i) for i in range(num_simulations)], dim=0)
+
+    # additional input
+    kwargs = {}
+
+    # inputs / outputs
+    inputs, outputs = (simulations, questions, kwargs), (answers,)
+    return (inputs, outputs)

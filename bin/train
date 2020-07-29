@@ -13,56 +13,71 @@ import hydra
 
 import intphys
 from intphys.data import IntuitivePhysicsDataset, collate_fn
-from intphys.model.baseline import BlindBaseline
+from intphys.model import *
 from intphys.experiment import Experiment
 
 CONFIG_DIR = osp.abspath(osp.join(__file__, "../..", "config"))
 
-@hydra.main(config_path=osp.join(CONFIG_DIR, "train.yaml"), strict=False)
+
+@hydra.main(config_path=osp.join(CONFIG_DIR, "default.yaml"), strict=False)
 def train(config):
     config = pl.utilities.parsing.AttributeDict(config)
     pl.seed_everything(config["seed"])
 
     # load data
-    datadir = osp.abspath(osp.expanduser(config["data"]["path"]))
-    train_data = IntuitivePhysicsDataset(datadir, split="train")
-    val_data = IntuitivePhysicsDataset(datadir, split="validation")
-    train_dataloader = DataLoader(train_data,
-                                  shuffle=True,
-                                  collate_fn=collate_fn,
-                                  **config["data"]["loader"])
-    val_dataloader = DataLoader(val_data,
-                                shuffle=False,
-                                collate_fn=collate_fn,
-                                **config["data"]["loader"])
+    train_data = IntuitivePhysicsDataset(split="train", **config["dataset"])
+    val_data = IntuitivePhysicsDataset(split="validation", **config["dataset"])
 
+    # logger / checkpoint
     log_dir = osp.abspath(osp.expanduser(config["logger"]["dir"]))
+    if config["logger"]["name"] is None:
+        config["logger"]["name"] = config["model"]["architecture"]
     logger = pl.loggers.TensorBoardLogger(
-        log_dir, name=config["model"]["architecture"])
+        log_dir, name=config["logger"]["name"])
     save_path = osp.join(logger.log_dir, "checkpoints/{epoch:03d}")
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         filepath=save_path, **config["checkpoint"])
-    trainer = pl.Trainer(logger=logger,
-                         checkpoint_callback=checkpoint_callback,
-                         **config["trainer"])
 
+    # data dependent parameters
     if config["model"].get("input_size") is None:
         config["model"]["input_size"] = len(train_data.question_vocab)
     if config["model"].get("output_size") is None:
         config["model"]["output_size"] = len(train_data.answer_vocab)
+    experiment = Experiment(config)
 
-    model = Experiment(config)
+    # setup simulation read procedure (depends on model)
+    train_data.sim_input = experiment.model.SIMULATION_INPUT
+    val_data.sim_input = experiment.model.SIMULATION_INPUT
+
+    # create data loaders
+    train_dataloader = DataLoader(train_data,
+                                  shuffle=True,
+                                  collate_fn=collate_fn,
+                                  **config["loader"])
+    val_dataloader = DataLoader(val_data,
+                                shuffle=False,
+                                collate_fn=collate_fn,
+                                **config["loader"])
+
+    # trainer
+    trainer = pl.Trainer(
+        logger=logger,
+        checkpoint_callback=checkpoint_callback,
+        **config["trainer"])
     trainer.fit(
-        model,
+        experiment,
         train_dataloader=train_dataloader,
         val_dataloaders=val_dataloader)
 
-    test_data = IntuitivePhysicsDataset(datadir, split="test")
-    test_dataloader = DataLoader(test_data,
-                                 shuffle=False,
-                                 collate_fn=collate_fn,
-                                 **config["data"]["loader"])
-    trainer.test(test_dataloaders=test_dataloader)
+    if config["test"]:
+        test_data = IntuitivePhysicsDataset(split="test", **config["dataset"])
+        test_data.sim_input = experiment.model.SIMULATION_INPUT
+        test_dataloader = DataLoader(
+            test_data,
+            shuffle=False,
+            collate_fn=collate_fn,
+            **config["loader"])
+        trainer.test(test_dataloaders=test_dataloader)
 
 
 if __name__ == "__main__":

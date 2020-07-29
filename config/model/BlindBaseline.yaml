@@ -1,6 +1,0 @@
-model:
-  architecture: BlindBaseline
-  hidden_size: 128
-  embed_size: 128
-  input_size: null
-  output_size: null

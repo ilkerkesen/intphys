@@ -5,12 +5,24 @@ hydra:
 
 # experiment
 seed: 1
+test: true
 trainer:
   gpus: 1
-  max_epochs: 50
+  max_epochs: 200
+
+# data loader
+loader:
+  batch_size: 256
+  pin_memory: false
+  num_workers: 0
+
+# dataset
+dataset:
+  path: ~/data/intphys/Dataset100
 
 # logger (tensorboard)
 logger:
+  name: null
   dir: ~/logs/intphys
 
 # checkpoint
@@ -22,8 +34,7 @@ checkpoint:
   mode: "max"
   prefix: ""
 
-# model & data
+# model
 defaults:
   - model: BlindBaseline
-  - data: Dataset100
   - hydra/job_logging: disabled
