@@ -2,6 +2,7 @@
 
 import os
 import os.path as osp
+from itertools import repeat
 
 import torch
 import torch.nn as nn
@@ -9,20 +10,27 @@ import pytorch_lightning as pl
 from .model.baseline import *
 
 
+__all__ = (
+    'Experiment',
+    'TSVExportCallback',
+)
+
+
 class Experiment(pl.LightningModule):
     def __init__(self, config):
-        super(Experiment, self).__init__()
+        super().__init__()
         self.config = config
         self.model = eval(config["model"]["architecture"])(config["model"])
         self.criterion = nn.CrossEntropyLoss()
         self.save_hyperparameters(self.config)
+        self._generate_flag = False
 
     def forward(self, simulation, question, **kwargs):
         return self.model(simulation ,question, **kwargs)
 
     def training_step(self, batch, batch_index):
-        (simulations, questions, kwargs), (answers,) = batch
-        output = self(simulations, questions, **kwargs)
+        (simulations, questions, additional), (answers,) = batch
+        output = self(simulations, questions, **additional["kwargs"])
         loss = self.criterion(output, answers)
         _, predictions = torch.max(output, 1)
         acc = (predictions == answers).float().mean()
@@ -43,18 +51,25 @@ class Experiment(pl.LightningModule):
         return self.calculate_accuracy(outputs, split="val")
 
     def test_step(self, batch, batch_index):
-        return self.batch_accuracy(batch, batch_index)
+        return self.batch_accuracy(batch, batch_index, testing=True)
 
     def test_epoch_end(self, outputs):
         return self.calculate_accuracy(outputs, split="test")
 
-    def batch_accuracy(self, batch, batch_index):
-        (simulations, questions, kwargs), (answers,) = batch
-        output = self(simulations, questions, **kwargs)
+    def batch_accuracy(self, batch, batch_index, testing=False):
+        (simulations, questions, additional), (answers,) = batch
+        output = self(simulations, questions, **additional["kwargs"])
         _, predictions = torch.max(output, 1)
         correct = (answers == predictions).sum()
         num_instances = torch.tensor(answers.size(), device=self.device).float()
         loss = self.criterion(output, answers)
+
+        if testing and self.generate_flag:
+            self.write_generations(
+                additional["video_indexes"],
+                additional["question_indexes"],
+                predictions)
+
         return {"correct": correct,
                 "num_instances": num_instances.squeeze(),
                 "loss": loss}
@@ -74,3 +89,30 @@ class Experiment(pl.LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.model.parameters())
+
+    @property
+    def generate_flag(self):
+        return self._generate_flag
+
+    @generate_flag.setter
+    def generate_flag(self, flag):
+        self._generate_flag = flag
+
+    def write_generations(self, vids, qids, predictions):
+        dataset = self.test_dataloader().dataset
+        split, vocab = dataset.split, dataset.answer_vocab
+        vocab = self.test_dataloader().dataset.answer_vocab
+        zipped = zip(vids, qids, repeat(split), vocab[predictions.tolist()])
+        lines = ["\t".join([str(xi) for xi in x]) + "\n" for x in zipped]
+        filepath = self.config["output"]
+        with open(filepath, "a") as f:
+            f.writelines(lines)
+
+
+class TSVExportCallback(pl.Callback):
+    def on_test_start(self, trainer, pl_module):
+        filepath = pl_module.config["output"]
+        parent_dir = osp.dirname(filepath)
+        osp.makedirs(parent_dir) if not osp.isdir(parent_dir) else None
+        with open(filepath, "w") as f:
+            f.write("video_index\tquestion_index\tsplit\tprediction\n")

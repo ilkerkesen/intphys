@@ -15,9 +15,17 @@ import numpy as np
 
 UNK = "<UNK>"
 PAD = "<PAD>"
-
-
 PUNCTUATION_REGEX = re.compile(r"([a-zA-Z0-9]+)(\W)")
+
+
+__all__ = (
+    'SimulationInput',
+    'IntuitivePhysicsDataset',
+    'train_collate_fn',
+    'inference_collate_fn',
+)
+
+
 def tokenize_sentence(sentence):
     return PUNCTUATION_REGEX.sub(r"\g<1> \g<2>", sentence.lower()).split()
 
@@ -80,6 +88,7 @@ class Vocab(object):
 
     def __getitem__(self, x):
         x = (x,) if isinstance(x, int) else x
+        x = x.tolist() if isinstance(x, torch.Tensor) else x
         x = tokenize_sentence(x) if isinstance(x, str) else x
 
         if all(isinstance(xi, str) for xi in x):
@@ -198,17 +207,19 @@ class IntuitivePhysicsDataset(data.Dataset):
                 self.postprocess_simulation(x) for x in simulation)
         question = self.question_vocab[item["question"]]
         answer = self.answer_vocab[tokenize_sentence(str(item["answer"]))]
-        item_dict = {"simulation": simulation,
-                     "question": torch.tensor(question),
-                     "answer": torch.tensor(answer)}
+        item_dict = {
+            "simulation": simulation,
+            "question": torch.tensor(question),
+            "answer": torch.tensor(answer),
+            "template": osp.splitext(item["template_filename"])[0],
+            "video": item["video"],
+            "video_index": item["video_index"],
+            "question_index": item["question_index"],
+        }
         return item_dict
 
 
-def collate_fn(unsorted_batch):
-    batch = sorted(unsorted_batch,
-                   key=lambda x: len(x["question"]),
-                   reverse=True)
-
+def base_collate_fn(batch):
     # question batching
     batchsize, longest = len(batch), len(batch[0]["question"])
     questions = torch.zeros((longest, batchsize), dtype=torch.long)
@@ -224,9 +235,28 @@ def collate_fn(unsorted_batch):
     helper = lambda i: torch.cat([x["simulation"][i] for x in batch], dim=0)
     simulations = torch.cat([helper(i) for i in range(num_simulations)], dim=0)
 
-    # additional input
-    kwargs = {}
+    return (simulations, questions, answers)
 
-    # inputs / outputs
-    inputs, outputs = (simulations, questions, kwargs), (answers,)
+
+def train_collate_fn(unsorted_batch):
+    batch = sorted(unsorted_batch,
+                   key=lambda x: len(x["question"]),
+                   reverse=True)
+    simulations, questions, answers = base_collate_fn(batch)
+    additional = {"kwargs": {}}
+    inputs, outputs = (simulations, questions, additional), (answers,)
+    return (inputs, outputs)
+
+
+def inference_collate_fn(unsorted_batch):
+    batch = sorted(unsorted_batch,
+                   key=lambda x: len(x["question"]),
+                   reverse=True)
+    simulations, questions, answers = base_collate_fn(batch)
+    additional = {
+        "video_indexes": [x["video_index"] for x in batch],
+        "question_indexes": [x["question_index"] for x in batch],
+        "kwargs": {},
+    }
+    inputs, outputs = (simulations, questions, additional), (answers,)
     return (inputs, outputs)
