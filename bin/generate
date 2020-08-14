@@ -1,0 +1,47 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import os
+import os.path as osp
+
+import torch
+import torch.nn as nn
+from torch.nn import functional as F
+from torch.utils.data import DataLoader
+import pytorch_lightning as pl
+import hydra
+
+
+from intphys import *
+from intphys.data import inference_collate_fn as collate_fn
+
+
+CONFIG_DIR = osp.abspath(osp.join(__file__, "../..", "config"))
+
+
+@hydra.main(config_path=osp.join(CONFIG_DIR, "generate.yaml"), strict=False)
+def train(config):
+    config = pl.utilities.parsing.AttributeDict(config)
+    pl.seed_everything(config["seed"])
+
+    if config["output"] is None:
+        raise("output is a required parameter.")
+
+    # load data/model
+    data = IntuitivePhysicsDataset(**config["dataset"])
+    experiment = Experiment.load_from_checkpoint(config["checkpoint"])
+    experiment.config["output"] = osp.abspath(osp.expanduser(config["output"]))
+    experiment.generate_flag = True
+    data.sim_input = experiment.model.SIMULATION_INPUT
+    dataloader = DataLoader(data, collate_fn=collate_fn, **config["loader"])
+
+    # trainer
+    trainer = pl.Trainer(logger=False,
+                         checkpoint_callback=False,
+                         callbacks=[TSVExportCallback()],
+                         **config["trainer"])
+    trainer.test(experiment, test_dataloaders=dataloader)
+
+
+if __name__ == "__main__":
+    train()

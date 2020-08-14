@@ -11,15 +11,14 @@ from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 import hydra
 
-import intphys
-from intphys.data import IntuitivePhysicsDataset, collate_fn
-from intphys.model import *
-from intphys.experiment import Experiment
+from intphys import *
+from intphys.data import train_collate_fn as collate_fn
+from intphys.experiment import LearningExperiment as Experiment
 
 CONFIG_DIR = osp.abspath(osp.join(__file__, "../..", "config"))
 
 
-@hydra.main(config_path=osp.join(CONFIG_DIR, "default.yaml"), strict=False)
+@hydra.main(config_path=osp.join(CONFIG_DIR, "train.yaml"), strict=False)
 def train(config):
     config = pl.utilities.parsing.AttributeDict(config)
     pl.seed_everything(config["seed"])
@@ -29,14 +28,14 @@ def train(config):
     val_data = IntuitivePhysicsDataset(split="validation", **config["dataset"])
 
     # logger / checkpoint
-    log_dir = osp.abspath(osp.expanduser(config["logger"]["dir"]))
+    config["logger"]["save_dir"] = osp.abspath(
+        osp.expanduser(config["logger"]["save_dir"]))
     if config["logger"]["name"] is None:
         config["logger"]["name"] = config["model"]["architecture"]
-    logger = pl.loggers.TensorBoardLogger(
-        log_dir, name=config["logger"]["name"])
-    save_path = osp.join(logger.log_dir, "checkpoints/{epoch:03d}")
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        filepath=save_path, **config["checkpoint"])
+    logger = pl.loggers.TensorBoardLogger(**config["logger"])
+    config["checkpoint"]["filepath"] = osp.join(
+        logger.log_dir, "checkpoints/{epoch:03d}")
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(**config["checkpoint"])
 
     # data dependent parameters
     if config["model"].get("input_size") is None:
@@ -63,12 +62,17 @@ def train(config):
     trainer = pl.Trainer(
         logger=logger,
         checkpoint_callback=checkpoint_callback,
+        callbacks=[TSVExportCallback()],
         **config["trainer"])
-    trainer.fit(
-        experiment,
-        train_dataloader=train_dataloader,
-        val_dataloaders=val_dataloader)
 
+    # train
+    if config["train"]:
+        trainer.fit(
+            experiment,
+            train_dataloader=train_dataloader,
+            val_dataloaders=val_dataloader)
+
+    # test
     if config["test"]:
         test_data = IntuitivePhysicsDataset(split="test", **config["dataset"])
         test_data.sim_input = experiment.model.SIMULATION_INPUT

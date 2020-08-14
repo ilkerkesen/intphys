@@ -5,6 +5,7 @@ hydra:
 
 # experiment
 seed: 1
+train: true
 test: true
 trainer:
   gpus: 1
@@ -23,7 +24,8 @@ dataset:
 # logger (tensorboard)
 logger:
   name: null
-  dir: ~/logs/intphys
+  version: null
+  save_dir: ~/logs/intphys
 
 # checkpoint
 checkpoint:
