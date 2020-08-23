@@ -18,7 +18,6 @@ loader:
 # dataset
 dataset:
   path: ~/data/intphys/Dataset100
-  split: "train"
 
 # checkpoint path
 checkpoint: null

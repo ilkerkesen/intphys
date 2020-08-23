@@ -10,8 +10,15 @@ model:
     num_layers: 3
     input_width: 256
     input_height: 256
-    kernel_size: 5
-    stride: 2
+    input_depth: 0
+    kernel_size:
+      - 10
+      - 5
+      - 5
+    stride:
+      - 1
+      - 2
+      - 2
   mlp:
     activation: relu
     num_layers: 1

@@ -14,6 +14,7 @@ __all__ = (
     "FirstFrameBaseline",
     "LastFrameBaseline",
     "DoubleFramesBaseline",
+    "VideoBaseline",
 )
 
 
@@ -22,6 +23,8 @@ class TextualBaseline(nn.Module):
     Does not use any kind of visual data.
     """
     SIMULATION_INPUT = SimulationInput.NO_FRAMES
+    NUM_VIDEO_FRAMES = 0
+
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -45,6 +48,7 @@ class VisualBaseline(nn.Module):
     """
 
     SIMULATION_INPUT = None
+    NUM_VIDEO_FRAMES = 0
 
     def __init__(self, config):
         super().__init__()
@@ -90,6 +94,7 @@ class DoubleFramesVisualBaseline(VisualBaseline):
 
 class SimpleBaseline(nn.Module):
     SIMULATION_INPUT = SimulationInput.NO_FRAMES
+    NUM_VIDEO_FRAMES = 0
 
     def __init__(self, config):
         super().__init__()
@@ -141,3 +146,8 @@ class DoubleFramesBaseline(SimpleBaseline):
         first_frames, last_frames = vis[:batch_size], vis[:batch_size]
         vis = first_frames + last_frames
         return self.linear(torch.cat([vis, txt], dim=1))
+
+
+class VideoBaseline(SimpleBaseline):
+    SIMULATION_INPUT = SimulationInput.VIDEO
+    NUM_VIDEO_FRAMES = 10

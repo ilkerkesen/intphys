@@ -13,13 +13,13 @@ trainer:
 
 # data loader
 loader:
-  batch_size: 256
+  batch_size: 32
   pin_memory: false
   num_workers: 0
 
 # dataset
 dataset:
-  path: ~/data/intphys/Dataset100
+  path: ~/data/intphys/Dataset_250_070720
 
 # logger (tensorboard)
 logger:
