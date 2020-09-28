@@ -1,9 +1,10 @@
 model:
-  architecture: null
-  hidden_size: 256
-  embed_size: 256
-  input_size: null
-  output_size: null
+  architecture: LRCNBaseline
+  num_answers: null
+  question_encoder:
+    input_size: null
+    hidden_size: 128
+    embed_size: 128
   convnet:
     architecture: ShallowCNN
     num_channels: 16
@@ -22,5 +23,8 @@ model:
   mlp:
     activation: relu
     num_layers: 1
-    hidden_size: 64
+    hidden_size: 128
+    input_size: null
+  video_encoder:
+    hidden_size: 128
     input_size: null

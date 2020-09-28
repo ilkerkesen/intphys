@@ -37,7 +37,7 @@ def main(config):
         for simulation in tqdm(simulations):
             for question in simulation["questions"]["questions"]:
                 question["split"] = simulation["split"]
-                columns = [str(question[k]) for k in headers]
+                columns = [str(question[k]).lower() for k in headers]
                 f.write("\t".join(columns) + "\n")
 
     print("done")

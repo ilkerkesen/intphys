@@ -106,8 +106,12 @@ class SimpleBaseline(nn.Module):
         config["mlp"]["input_size"] = self.convnet.out_features
         self.flatten = nn.Flatten()
         self.mlp = MLP(config["mlp"])
+
+        in_features = config["mlp"]["hidden_size"] + config["hidden_size"]
+        if self.SIMULATION_INPUT == SimulationInput.FIRST_AND_LAST_FRAMES:
+            in_features += config["mlp"]["hidden_size"]
         self.linear = nn.Linear(
-            in_features=config["mlp"]["hidden_size"]+config["hidden_size"],
+            in_features=in_features,
             out_features=config["output_size"])
         self.config = config
 
@@ -144,8 +148,7 @@ class DoubleFramesBaseline(SimpleBaseline):
         txt = self.process_question(questions, **kwargs)
         batch_size = vis.shape[0] // 2
         first_frames, last_frames = vis[:batch_size], vis[:batch_size]
-        vis = first_frames + last_frames
-        return self.linear(torch.cat([vis, txt], dim=1))
+        return self.linear(torch.cat([first_frames, last_frames, txt], dim=1))
 
 
 class VideoBaseline(SimpleBaseline):

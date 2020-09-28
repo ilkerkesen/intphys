@@ -5,6 +5,7 @@ import os.path as osp
 import json
 import re
 from enum import IntEnum
+from copy import deepcopy
 
 import torch
 import torch.utils.data as data
@@ -135,8 +136,11 @@ class IntuitivePhysicsDataset(data.Dataset):
 
     def build_split(self):
         self.questions = []
-        simulations = filter(
-            lambda x: x["split"] == self.split, self.json_data)
+        if self.split != "all":
+            simulations = filter(
+                lambda x: x["split"] == self.split, self.json_data)
+        else:
+            simulations = self.json_data
         for sim in simulations:
             self.questions.extend(sim["questions"]["questions"])
 

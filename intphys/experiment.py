@@ -7,7 +7,8 @@ from itertools import repeat
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-from .model.baseline import *
+from .model import *
+
 
 
 __all__ = (
@@ -104,7 +105,7 @@ class Experiment(pl.LightningModule):
     def write_generations(self, vids, qids, predictions):
         dataset = self.test_dataloader().dataset
         split, vocab = dataset.split, dataset.answer_vocab
-        vocab = self.test_dataloader().dataset.answer_vocab
+        vocab = dataset.answer_vocab
         zipped = zip(vids, qids, repeat(split), vocab[predictions.tolist()])
         lines = ["\t".join([str(xi) for xi in x]) + "\n" for x in zipped]
         filepath = self.config["output"]
