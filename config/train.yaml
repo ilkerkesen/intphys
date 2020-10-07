@@ -9,17 +9,17 @@ train: true
 test: true
 trainer:
   gpus: 1
-  max_epochs: 200
+  max_epochs: 50
 
 # data loader
 loader:
-  batch_size: 256
+  batch_size: 32
   pin_memory: false
   num_workers: 0
 
 # dataset
 dataset:
-  path: ~/data/intphys/Dataset100
+  path: ~/data/intphys/Dataset_3000_230920
 
 # logger (tensorboard)
 logger:
@@ -38,5 +38,5 @@ checkpoint:
 
 # model
 defaults:
-  - model: BlindBaseline
+  - model: Baseline
   - hydra/job_logging: disabled

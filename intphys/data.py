@@ -5,6 +5,7 @@ import os.path as osp
 import json
 import re
 from enum import IntEnum
+from copy import deepcopy
 
 import torch
 import torch.utils.data as data
@@ -46,8 +47,7 @@ class SimulationInput(IntEnum):
     FIRST_FRAME = 1
     LAST_FRAME = 2
     FIRST_AND_LAST_FRAMES = 3
-    ALL_FRAMES = 4
-    MANY_FRAMES = 5
+    VIDEO = 4
 
     def from_string(obj):
         if isinstance(obj, int) or isinstance(obj, SimulationInput):
@@ -108,14 +108,16 @@ class IntuitivePhysicsDataset(data.Dataset):
     def __init__(
             self, path,
             split="train",
-            simulation=SimulationInput.NO_FRAMES,
-            normalization=Lambda(lambda x: 2. * (x/255.) - 1.),
+            normalization=Lambda(lambda x: x/255.),
             transform=None):
         self.datadir = osp.abspath(osp.expanduser(path))
         self.split = split
-        self.sim_input = SimulationInput.from_string(simulation)
         self.transform = transform
         self.normalize = normalization
+
+        # variables depend on model, see adapt2model method
+        self.sim_input, self.num_frames = None, None
+
         self.read_jsonfile()
         self.build_vocabs()
         self.build_split()
@@ -134,10 +136,17 @@ class IntuitivePhysicsDataset(data.Dataset):
 
     def build_split(self):
         self.questions = []
-        simulations = filter(
-            lambda x: x["split"] == self.split, self.json_data)
+        if self.split != "all":
+            simulations = filter(
+                lambda x: x["split"] == self.split, self.json_data)
+        else:
+            simulations = self.json_data
         for sim in simulations:
             self.questions.extend(sim["questions"]["questions"])
+
+    def adapt2model(self, model):
+        self.sim_input = model.SIMULATION_INPUT
+        self.num_frames = model.NUM_VIDEO_FRAMES
 
     def read_simulation(self, item):
         sim_input = str(self.sim_input).split(".")[1]
@@ -170,8 +179,14 @@ class IntuitivePhysicsDataset(data.Dataset):
 
     def read_first_and_last_frames(self, item):
         first_frame = self.read_first_frame(item)
-        last_frame = self.read_first_frame(item)
+        last_frame = self.read_last_frame(item)
         return (first_frame, last_frame)
+
+    def read_video(self, item):
+        filename = item["video_filename"]
+        video_path = osp.abspath(osp.join(self.datadir, "..", filename))
+        video = read_video(video_path, pts_unit="sec")[0]
+        return video
 
     def read_no_frames(self, item):
         return torch.zeros(1)
@@ -189,6 +204,12 @@ class IntuitivePhysicsDataset(data.Dataset):
 
         # make it appropriate for minibatching
         processed = processed.unsqueeze(0)
+
+        # downsample frames
+        if self.sim_input == SimulationInput.VIDEO and self.num_frames != -1:
+            D = processed.shape[2]
+            step_size = (D // self.num_frames) + int(D % self.num_frames > 0)
+            processed = processed[:, :, ::step_size, :, :]
 
         return processed
 

@@ -13,7 +13,8 @@ import hydra
 
 from intphys import *
 from intphys.data import train_collate_fn as collate_fn
-from intphys.experiment import LearningExperiment as Experiment
+from intphys.data import SimulationInput
+from intphys.experiment import Experiment
 
 CONFIG_DIR = osp.abspath(osp.join(__file__, "../..", "config"))
 
@@ -44,9 +45,9 @@ def train(config):
         config["model"]["output_size"] = len(train_data.answer_vocab)
     experiment = Experiment(config)
 
-    # setup simulation read procedure (depends on model)
-    train_data.sim_input = experiment.model.SIMULATION_INPUT
-    val_data.sim_input = experiment.model.SIMULATION_INPUT
+    # setup dataset params depend on model
+    train_data.adapt2model(experiment.model)
+    val_data.adapt2model(experiment.model)
 
     # create data loaders
     train_dataloader = DataLoader(train_data,
@@ -62,7 +63,7 @@ def train(config):
     trainer = pl.Trainer(
         logger=logger,
         checkpoint_callback=checkpoint_callback,
-        callbacks=[TSVExportCallback()],
+
         **config["trainer"])
 
     # train
@@ -75,7 +76,7 @@ def train(config):
     # test
     if config["test"]:
         test_data = IntuitivePhysicsDataset(split="test", **config["dataset"])
-        test_data.sim_input = experiment.model.SIMULATION_INPUT
+        test_data.adapt2model(experiment.model)
         test_dataloader = DataLoader(
             test_data,
             shuffle=False,

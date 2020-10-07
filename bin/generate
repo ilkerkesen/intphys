@@ -19,29 +19,46 @@ from intphys.data import inference_collate_fn as collate_fn
 CONFIG_DIR = osp.abspath(osp.join(__file__, "../..", "config"))
 
 
-@hydra.main(config_path=osp.join(CONFIG_DIR, "generate.yaml"), strict=False)
-def train(config):
+def create_dataloader(model, split, config):
+    dataset = IntuitivePhysicsDataset(split=split, **config["dataset"])
+    dataset.adapt2model(model)
+    loader = DataLoader(dataset, collate_fn=collate_fn, **config["loader"])
+    return loader
+
+
+@hydra.main(config_path=osp.join(CONFIG_DIR, "generate.yaml"))
+def generate(config):
     config = pl.utilities.parsing.AttributeDict(config)
     pl.seed_everything(config["seed"])
 
     if config["output"] is None:
         raise("output is a required parameter.")
+    delimiter = config.get("delimiter", "tab")
+    delimiter = "," if delimiter != "tab" else "\t"
 
     # load data/model
-    data = IntuitivePhysicsDataset(**config["dataset"])
     experiment = Experiment.load_from_checkpoint(config["checkpoint"])
     experiment.config["output"] = osp.abspath(osp.expanduser(config["output"]))
     experiment.generate_flag = True
-    data.sim_input = experiment.model.SIMULATION_INPUT
-    dataloader = DataLoader(data, collate_fn=collate_fn, **config["loader"])
+
+    dataloaders = [
+        create_dataloader(experiment.model, s, config) for s in SPLITS]
+
+    if experiment.generate_flag == True:
+        filepath = config["output"]
+        parent_dir = osp.dirname(filepath)
+        osp.makedirs(parent_dir) if not osp.isdir(parent_dir) else None
+        with open(filepath, "w") as f:
+            headers = ["video_index", "question_index", "split", "prediction"]
+            f.write(delimiter.join(headers) + "\n")
 
     # trainer
     trainer = pl.Trainer(logger=False,
                          checkpoint_callback=False,
-                         callbacks=[TSVExportCallback()],
                          **config["trainer"])
-    trainer.test(experiment, test_dataloaders=dataloader)
+    for dataloader in dataloaders:
+        trainer.test(experiment, test_dataloaders=dataloader)
 
 
 if __name__ == "__main__":
-    train()
+    generate()

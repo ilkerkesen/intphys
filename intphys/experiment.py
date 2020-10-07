@@ -7,7 +7,8 @@ from itertools import repeat
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-from .model.baseline import *
+from .model import *
+
 
 
 __all__ = (
@@ -48,13 +49,16 @@ class Experiment(pl.LightningModule):
         return self.batch_accuracy(batch, batch_index)
 
     def validation_epoch_end(self, outputs):
-        return self.calculate_accuracy(outputs, split="val")
+        split = self.val_dataloader().dataset.split
+        split = "val" if split.startswith("val") else split
+        return self.calculate_accuracy(outputs, split=split)
 
     def test_step(self, batch, batch_index):
         return self.batch_accuracy(batch, batch_index, testing=True)
 
     def test_epoch_end(self, outputs):
-        return self.calculate_accuracy(outputs, split="test")
+        split = self.test_dataloader().dataset.split
+        return self.calculate_accuracy(outputs, split=split)
 
     def batch_accuracy(self, batch, batch_index, testing=False):
         (simulations, questions, additional), (answers,) = batch
@@ -101,7 +105,7 @@ class Experiment(pl.LightningModule):
     def write_generations(self, vids, qids, predictions):
         dataset = self.test_dataloader().dataset
         split, vocab = dataset.split, dataset.answer_vocab
-        vocab = self.test_dataloader().dataset.answer_vocab
+        vocab = dataset.answer_vocab
         zipped = zip(vids, qids, repeat(split), vocab[predictions.tolist()])
         lines = ["\t".join([str(xi) for xi in x]) + "\n" for x in zipped]
         filepath = self.config["output"]
@@ -111,6 +115,8 @@ class Experiment(pl.LightningModule):
 
 class TSVExportCallback(pl.Callback):
     def on_test_start(self, trainer, pl_module):
+        if pl_module.generate_flag == False:
+            return
         filepath = pl_module.config["output"]
         parent_dir = osp.dirname(filepath)
         osp.makedirs(parent_dir) if not osp.isdir(parent_dir) else None
