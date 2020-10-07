@@ -3,8 +3,8 @@ model:
   num_answers: null
   question_encoder:
     input_size: null
-    hidden_size: 128
-    embed_size: 128
+    hidden_size: 256
+    embed_size: 256
   convnet:
     architecture: ShallowCNN
     num_channels: 16

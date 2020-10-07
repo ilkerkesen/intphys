@@ -104,12 +104,11 @@ class SimpleBaseline(nn.Module):
         self.lstm = nn.LSTM(config["embed_size"], config["hidden_size"])
         self.convnet = eval(config["convnet"]["architecture"])(config["convnet"])
         config["mlp"]["input_size"] = self.convnet.out_features
+        if self.SIMULATION_INPUT == SimulationInput.FIRST_AND_LAST_FRAMES:
+            config["mlp"]["input_size"] *= 2
         self.flatten = nn.Flatten()
         self.mlp = MLP(config["mlp"])
-
         in_features = config["mlp"]["hidden_size"] + config["hidden_size"]
-        if self.SIMULATION_INPUT == SimulationInput.FIRST_AND_LAST_FRAMES:
-            in_features += config["mlp"]["hidden_size"]
         self.linear = nn.Linear(
             in_features=in_features,
             out_features=config["output_size"])
@@ -143,12 +142,14 @@ class LastFrameBaseline(SimpleBaseline):
 class DoubleFramesBaseline(SimpleBaseline):
     SIMULATION_INPUT = SimulationInput.FIRST_AND_LAST_FRAMES
 
-    def forward(self, simulations, questions, **kwargs):
-        vis = self.process_simulation(simulations, **kwargs)
-        txt = self.process_question(questions, **kwargs)
-        batch_size = vis.shape[0] // 2
-        first_frames, last_frames = vis[:batch_size], vis[:batch_size]
-        return self.linear(torch.cat([first_frames, last_frames, txt], dim=1))
+    def process_simulation(self, simulations, **kwargs):
+        y = self.convnet(simulations)
+        y = self.flatten(y)
+        batch_size = y.size(0) // 2
+        first_frames, last_frames = y[:batch_size], y[batch_size:]
+        y = torch.cat([first_frames, last_frames], dim=1)
+        y = self.mlp(y)
+        return y
 
 
 class VideoBaseline(SimpleBaseline):

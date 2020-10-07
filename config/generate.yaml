@@ -17,7 +17,7 @@ loader:
 
 # dataset
 dataset:
-  path: ~/data/intphys/Dataset_250_070720
+  path: ~/data/intphys/Dataset_3000_230920
 
 # checkpoint path
 checkpoint: null
