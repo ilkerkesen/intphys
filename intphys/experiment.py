@@ -92,7 +92,7 @@ class Experiment(pl.LightningModule):
                 "progress_bar": tensorboard_logs}
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.model.parameters())
+        return torch.optim.Adam(self.model.parameters(), lr=1e-4)
 
     @property
     def generate_flag(self):
