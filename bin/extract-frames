@@ -1,0 +1,62 @@
+#!/usr/bin/env python
+
+import os
+import os.path as osp
+import json
+import re
+from copy import deepcopy
+from itertools import product
+
+
+import click
+import numpy as np
+from tqdm import tqdm
+from torchvision.io import read_video, read_video_timestamps
+from torchvision.utils import save_image
+import cv2
+
+
+def read_first_frame(datadir, filename):
+    filepath = osp.abspath(osp.join(datadir, "..", filename))
+    timestamp = read_video_timestamps(filepath, pts_unit="sec")[0][0]
+    frame = read_video(
+        filepath, pts_unit="sec", start_pts=timestamp, end_pts=timestamp)[0]
+    return cv2.cvtColor(frame.squeeze(0).numpy(), cv2.COLOR_RGB2BGR)
+
+
+def read_last_frame(datadir, filename):
+    filepath = osp.abspath(osp.join(datadir, "..", filename))
+    timestamp = read_video_timestamps(filepath, pts_unit="sec")[0][-1]
+    frame = read_video(
+        filepath, pts_unit="sec", start_pts=timestamp, end_pts=timestamp)[0]
+    return cv2.cvtColor(frame.squeeze(0).numpy(), cv2.COLOR_RGB2BGR)
+
+
+@click.command()
+@click.option("--datadir", default="~/data/intphys/Dataset_3000_230920")
+def main(datadir):
+    datadir = osp.abspath(osp.expanduser(datadir))
+    jsonfile = osp.join(datadir, "dataset.json")
+    with open(jsonfile, "r") as f:
+        json_data = json.load(f)
+
+    rexp = re.compile(r'\./.+/videos/(.+)/(\d+)\.(\w+)$')
+    for sim in tqdm(json_data):
+        # read
+        simdir, prefix, ext = rexp.match(sim["video_path"]).groups()
+        video_filename = "{}.{}".format(prefix, ext)
+        image_filename = "{}.png".format(prefix)
+        first_frame = read_first_frame(datadir, sim["video_path"])
+        last_frame = read_last_frame(datadir, sim["video_path"])
+
+        # write
+        first_frames_path = osp.join(datadir, "first_frames", simdir)
+        last_frames_path = osp.join(datadir, "last_frames", simdir)
+        osp.exists(first_frames_path) or os.makedirs(first_frames_path)
+        osp.exists(last_frames_path) or os.makedirs(last_frames_path)
+        cv2.imwrite(osp.join(first_frames_path, image_filename), first_frame)
+        cv2.imwrite(osp.join(last_frames_path, image_filename), last_frame)
+
+
+if __name__ == "__main__":
+    main()

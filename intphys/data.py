@@ -10,8 +10,9 @@ from copy import deepcopy
 import torch
 import torch.utils.data as data
 from torchvision.io import read_video, read_video_timestamps
-from torchvision.transforms import Lambda
+from torchvision.transforms import Lambda, ToTensor
 import numpy as np
+import cv2
 
 
 UNK = "<UNK>"
@@ -153,29 +154,19 @@ class IntuitivePhysicsDataset(data.Dataset):
         sim_func = eval("self.read_{}".format(sim_input.lower()))
         return sim_func(item)
 
+    def read_frame(self, item, frame="first"):
+        path = item["video_filename"]
+        path = path.replace("videos", frame + "_frames").replace("mpg", "png")
+        path = osp.abspath(osp.join(self.datadir, "..", path))
+        image = cv2.imread(path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        return torch.tensor(image).permute(2, 0, 1)
+
     def read_first_frame(self, item):
-        filename = item["video_filename"]
-        video_path = osp.abspath(osp.join(self.datadir, "..", filename))
-        first_timestamp = read_video_timestamps(
-            video_path, pts_unit="sec")[0][0]
-        first_frame = read_video(
-            video_path,
-            pts_unit="sec",
-            start_pts=first_timestamp,
-            end_pts=first_timestamp)[0]
-        return first_frame
+        return self.read_frame(item)
 
     def read_last_frame(self, item):
-        filename = item["video_filename"]
-        video_path = osp.abspath(osp.join(self.datadir, "..", filename))
-        last_timestamp = read_video_timestamps(
-            video_path, pts_unit="sec")[0][-1]
-        last_frame = read_video(
-            video_path,
-            pts_unit="sec",
-            start_pts=last_timestamp,
-            end_pts=last_timestamp)[0]
-        return last_frame
+        return self.read_frame(item, frame="last")
 
     def read_first_and_last_frames(self, item):
         first_frame = self.read_first_frame(item)
@@ -186,13 +177,13 @@ class IntuitivePhysicsDataset(data.Dataset):
         filename = item["video_filename"]
         video_path = osp.abspath(osp.join(self.datadir, "..", filename))
         video = read_video(video_path, pts_unit="sec")[0]
-        return video
+        return rearrange_dimensions(video)
 
     def read_no_frames(self, item):
         return torch.zeros(1)
 
     def postprocess_simulation(self, simulation):
-        processed = rearrange_dimensions(simulation)
+        processed = simulation
 
         # normalization
         if self.normalize is not None:
