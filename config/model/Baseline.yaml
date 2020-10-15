@@ -1,26 +1,23 @@
 model:
   architecture: null
-  hidden_size: 256
-  embed_size: 256
   input_size: null
   output_size: null
-  convnet:
-    architecture: ShallowCNN
+  dropout: 0.2
+  question_encoder:
+    architecture: LSTMEncoder
+    hidden_size: 256
+    embed_size: 256
+    vocab_size: null
+  frame_encoder:
+    architecture: CNN2Dv1
     num_channels: 16
     num_layers: 3
-    input_width: 256
-    input_height: 256
-    input_depth: 0
-    kernel_size:
-      - 1
-      - 5
-      - 5
-    stride:
-      - 1
-      - 2
-      - 2
+    input_size: 256
+    kernel_size: 5
+    stride: 2
+    padding: 2
   mlp:
-    activation: relu
+    activation: tanh
     num_layers: 1
-    hidden_size: 64
+    hidden_size: 256
     input_size: null

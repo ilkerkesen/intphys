@@ -1,9 +1,9 @@
 from .base import MLP
-from .visual import ShallowCNN
+from .visual import CNN2Dv1
 from .textual import LSTMEncoder
 
 __all__ = (
     "MLP",
-    "ShallowCNN",
+    "CNN2Dv1",
     "LSTMEncoder",
 )

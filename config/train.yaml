@@ -10,6 +10,8 @@ test: true
 trainer:
   gpus: 1
   max_epochs: 50
+  gradient_clip_val: 5.0
+  val_check_interval: 1.00
 
 # data loader
 loader:

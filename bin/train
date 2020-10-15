@@ -63,7 +63,6 @@ def train(config):
     trainer = pl.Trainer(
         logger=logger,
         checkpoint_callback=checkpoint_callback,
-
         **config["trainer"])
 
     # train
