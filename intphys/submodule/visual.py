@@ -3,7 +3,7 @@ from copy import copy
 
 import torch
 import torch.nn as nn
-from torchvision.models import resnet18
+from torchvision.models import resnet18 as _resnet18
 
 
 from .base import MLP
@@ -49,3 +49,17 @@ class CNN2Dv1(nn.Module):
         P = self.config["padding"]
         S = self.config["stride"]
         return (input_size + 2*P - W) // S + 1
+
+
+def resnet18(config):
+    net = _resnet18(pretrained=config["pretrained"], progress=True)
+    layers = list(net.children())
+    net = nn.Sequential(*layers[:4+config["num_layers"]])
+    if config["pretrained"] and config["freeze"]:
+        for par in net.parameters():
+            par.requires_grad = False
+    out_size = config["input_size"] // 2**(config["num_layers"]+1)
+    out_channels = 2**(5+config["num_layers"])
+    net.out_features = out_channels * out_size * out_size
+    net.config = config
+    return net
