@@ -1,0 +1,95 @@
+#!/usr/bin/env python
+
+import time
+from statistics import mean, median, stdev
+import os
+import os.path as osp
+
+import click
+import numpy as np
+import torch
+from torchvision.io import read_video, read_video_timestamps
+import cv2
+import tqdm
+
+
+ROOT_PATH = osp.abspath(osp.expanduser("~/video-input-benchmark"))
+PATH_TO_60FPS = osp.join(ROOT_PATH, "60fps.mpg")
+PATH_TO_5FPS = osp.join(ROOT_PATH, "2fps.mp4")
+PATH_TO_FRAMES = osp.join(ROOT_PATH, "frames/")
+PATH_TO_IMAGE = osp.join(ROOT_PATH, "image.png")
+
+
+def read_video_func(video_path):
+    return read_video(video_path, pts_unit="sec")[0]
+
+
+def read_frames_func(frames_path):
+    filenames = sorted(os.listdir(frames_path))
+    frames = []
+    for filename in filenames:
+        frame = cv2.imread(osp.join(frames_path, filename))
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame = torch.tensor(frame).permute(2, 0, 1).unsqueeze(1)
+        frames.append(frame)
+    return torch.cat(frames, dim=1)
+
+
+def read_image_func(image_path):
+    image = cv2.imread(image_path)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    H, W, C = image.shape
+    num_frames = H // W
+    image = image.reshape(num_frames, W, W, C)
+    image = torch.tensor(image).permute(0, 3, 1, 2)
+    return image
+
+
+def benchmark(func, path, desc, times=100, best=10):
+    log = []
+    for i in tqdm.tqdm(range(times), desc=desc, ascii=True):
+        t0 = time.perf_counter()
+        func(path)
+        t1 = time.perf_counter()
+        log.append(t1-t0)
+    log.sort(reverse=False)
+    print("mean={}, median={}, std={}".format(
+        mean(log[:10]), median(log[:10]), stdev(log[:10])))
+
+
+@click.command()
+@click.option("-o", "--original", default=PATH_TO_60FPS,
+              type=click.Path(exists=True))
+@click.option("-d", "--downsampled", default=PATH_TO_5FPS,
+              type=click.Path(exists=True))
+@click.option("-e", "--extracted", default=PATH_TO_FRAMES,
+              type=click.Path(exists=True))
+@click.option("-i", "--image", default=PATH_TO_IMAGE,
+              type=click.Path(exists=True))
+@click.option("--times", default=100)
+@click.option("--best", default=10)
+def main(original, downsampled, extracted, image, times, best):
+    benchmark(
+        func=read_video_func,
+        path=downsampled,
+        desc="5fps-video",
+        times=times,
+        best=best)
+
+    benchmark(
+        func=read_frames_func,
+        path=extracted,
+        desc="5fps-extracted",
+        times=times,
+        best=best)
+
+    benchmark(
+        func=read_image_func,
+        path=image,
+        desc="5fps-image",
+        times=times,
+        best=best)
+
+
+if __name__ == "__main__":
+    main()
