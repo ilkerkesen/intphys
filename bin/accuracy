@@ -170,6 +170,7 @@ def print_headers(func):
         return func(*args, **kwargs)
     return wrapper
 
+
 def report(correct, total, gold_freq, pred_freq, **kwargs):
     keys = kwargs.get("keys")
     headers = kwargs.get("headers")

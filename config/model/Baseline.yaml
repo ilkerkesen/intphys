@@ -11,7 +11,7 @@ model:
   frame_encoder:
     architecture: CNN2Dv1
     num_channels: 16
-    num_layers: 3
+    num_layers: 5
     input_size: 256
     kernel_size: 5
     stride: 2
