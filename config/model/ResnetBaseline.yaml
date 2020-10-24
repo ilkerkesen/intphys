@@ -11,8 +11,8 @@ model:
   frame_encoder:
     architecture: resnet18
     input_size: 256
-    pretrained: True
-    freeze: True
+    pretrained: true
+    freeze: true
     num_layers: 4
   mlp:
     activation: tanh
