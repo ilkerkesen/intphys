@@ -25,11 +25,12 @@ class LSTMBaseline(nn.Module):
         config["question_encoder"]["vocab_size"] = config["input_size"]
         self.question_encoder = LSTMEncoder(config["question_encoder"])
         self.linear = nn.Linear(config["hidden_size"], config["output_size"])
+        self.dropout = nn.Dropout(p=config["dropout"])
         self.config = config
 
     def forward(self, simulations, questions, **kwargs):
         _, (hiddens, _) = self.question_encoder(questions)
-        answers = self.linear(hiddens.squeeze(0))
+        answers = self.linear(self.dropout(hiddens.squeeze(0)))
         return answers
 
 
