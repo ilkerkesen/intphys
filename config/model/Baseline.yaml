@@ -1,5 +1,5 @@
 model:
-  architecture: null
+  architecture: LSTMCNNBaselineFF
   input_size: null
   output_size: null
   dropout: 0.2
