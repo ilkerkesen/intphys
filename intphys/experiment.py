@@ -42,8 +42,10 @@ class Experiment(pl.LightningModule):
         loss = torch.stack([x["loss"] for x in outputs]).mean()
         acc = torch.stack([x["accuracy"] for x in outputs]).mean()
         logs = {"train_loss": loss, "train_accuracy": acc}
-        return {"train_loss": loss, "train_accuracy": acc,
-                "log": logs, "progress_bar": logs}
+        self.log("train_loss", loss)
+        self.log("train_accuracy", acc)
+        #return {"train_loss": loss, "train_accuracy": acc,
+        #        "log": logs, "progress_bar": logs}
 
     def validation_step(self, batch, batch_index):
         return self.batch_accuracy(batch, batch_index)
