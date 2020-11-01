@@ -4,6 +4,9 @@
 import os
 import os.path as osp
 
+import sys
+sys.path.append('..')
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
