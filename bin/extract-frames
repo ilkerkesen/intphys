@@ -21,6 +21,7 @@ def read_first_frame(datadir, filename):
     timestamp = read_video_timestamps(filepath, pts_unit="sec")[0][0]
     frame = read_video(
         filepath, pts_unit="sec", start_pts=timestamp, end_pts=timestamp)[0]
+    print(frame)
     return cv2.cvtColor(frame.squeeze(0).numpy(), cv2.COLOR_RGB2BGR)
 
 
