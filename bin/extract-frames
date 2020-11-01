@@ -46,8 +46,8 @@ def main(datadir):
         simdir, prefix, ext = rexp.match(sim["video_path"]).groups()
         video_filename = "{}.{}".format(prefix, ext)
         image_filename = "{}.png".format(prefix)
-        last_frame = read_last_frame(datadir, sim["video_path"])
         first_frame = read_first_frame(datadir, sim["video_path"])
+        last_frame = read_last_frame(datadir, sim["video_path"])
 
 
         # write
