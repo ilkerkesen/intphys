@@ -49,7 +49,6 @@ def main(datadir):
         first_frame = read_first_frame(datadir, sim["video_path"])
         last_frame = read_last_frame(datadir, sim["video_path"])
 
-
         # write
         first_frames_path = osp.join(datadir, "first_frames", simdir)
         last_frames_path = osp.join(datadir, "last_frames", simdir)
