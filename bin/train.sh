@@ -6,4 +6,4 @@
 #SBATCH --mail-type=END                       	# Event(s) that triggers email notification (BEGIN,END,FAIL,ALL)
 #SBATCH --mail-user=tayfunatesceng@gmail.com    # Destination email address
 
-train    										# Replace with your application's commands
+./train    										# Replace with your application's commands
