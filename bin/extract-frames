@@ -20,8 +20,7 @@ def read_first_frame(datadir, filename):
     filepath = osp.abspath(osp.join(datadir, "..", filename))
     timestamp = read_video_timestamps(filepath, pts_unit="sec")[0][0]
     frame = read_video(
-        filepath, pts_unit="sec", start_pts=timestamp, end_pts=timestamp)[0]
-    print(frame)
+        filepath, pts_unit="sec", start_pts=timestamp, end_pts=None)[0][0]
     return cv2.cvtColor(frame.squeeze(0).numpy(), cv2.COLOR_RGB2BGR)
 
 
@@ -29,7 +28,7 @@ def read_last_frame(datadir, filename):
     filepath = osp.abspath(osp.join(datadir, "..", filename))
     timestamp = read_video_timestamps(filepath, pts_unit="sec")[0][-1]
     frame = read_video(
-        filepath, pts_unit="sec", start_pts=timestamp, end_pts=timestamp)[0]
+        filepath, pts_unit="sec", start_pts=timestamp, end_pts=None)[0][0]
     return cv2.cvtColor(frame.squeeze(0).numpy(), cv2.COLOR_RGB2BGR)
 
 
@@ -47,8 +46,9 @@ def main(datadir):
         simdir, prefix, ext = rexp.match(sim["video_path"]).groups()
         video_filename = "{}.{}".format(prefix, ext)
         image_filename = "{}.png".format(prefix)
-        first_frame = read_first_frame(datadir, sim["video_path"])
         last_frame = read_last_frame(datadir, sim["video_path"])
+        first_frame = read_first_frame(datadir, sim["video_path"])
+
 
         # write
         first_frames_path = osp.join(datadir, "first_frames", simdir)
