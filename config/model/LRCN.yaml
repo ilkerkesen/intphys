@@ -1,30 +1,24 @@
 model:
   architecture: LRCNBaseline
-  num_answers: null
+  input_size: null
+  output_size: null
+  dropout: 0.2
   question_encoder:
+    architecture: LSTMEncoder
     input_size: null
     hidden_size: 256
     embed_size: 256
-  convnet:
-    architecture: ShallowCNN
-    num_channels: 16
-    num_layers: 3
-    input_width: 256
-    input_height: 256
-    input_depth: 0
-    kernel_size:
-      - 1
-      - 5
-      - 5
-    stride:
-      - 1
-      - 2
-      - 2
+  frame_encoder:
+    architecture: resnet18
+    input_size: 256
+    pretrained: true
+    freeze: true
+    num_layers: 4
   mlp:
-    activation: relu
+    activation: tanh
     num_layers: 1
-    hidden_size: 128
+    hidden_size: 256
     input_size: null
   video_encoder:
-    hidden_size: 128
+    hidden_size: 256
     input_size: null

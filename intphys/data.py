@@ -110,14 +110,14 @@ class IntuitivePhysicsDataset(data.Dataset):
             self, path,
             split="train",
             normalization=Lambda(lambda x: x/255.),
-            transform=None):
+            transform=None,
+            fps=3):
         self.datadir = osp.abspath(osp.expanduser(path))
         self.split = split
         self.transform = transform
         self.normalize = normalization
-
-        # variables depend on model, see adapt2model method
-        self.sim_input, self.num_frames = None, None
+        self.sim_input = None # depends on model
+        self.fps = 3
 
         self.read_jsonfile()
         self.build_vocabs()
@@ -147,7 +147,6 @@ class IntuitivePhysicsDataset(data.Dataset):
 
     def adapt2model(self, model):
         self.sim_input = model.SIMULATION_INPUT
-        self.num_frames = model.NUM_VIDEO_FRAMES
 
     def read_simulation(self, item):
         sim_input = str(self.sim_input).split(".")[1]
@@ -175,6 +174,9 @@ class IntuitivePhysicsDataset(data.Dataset):
 
     def read_video(self, item):
         filename = item["video_filename"]
+        if self.fps > 0:
+            filename = filename.replace("videos", f"downsampled/{self.fps}fps")
+            filename = filename.replace(".mpg", ".mp4")
         video_path = osp.abspath(osp.join(self.datadir, "..", filename))
         video = read_video(video_path, pts_unit="sec")[0]
         return rearrange_dimensions(video)
@@ -195,12 +197,6 @@ class IntuitivePhysicsDataset(data.Dataset):
 
         # make it appropriate for minibatching
         processed = processed.unsqueeze(0)
-
-        # downsample frames
-        if self.sim_input == SimulationInput.VIDEO and self.num_frames != -1:
-            D = processed.shape[2]
-            step_size = (D // self.num_frames) + int(D % self.num_frames > 0)
-            processed = processed[:, :, ::step_size, :, :]
 
         return processed
 
