@@ -9,13 +9,13 @@ train: true
 test: true
 trainer:
   gpus: 1
-  max_epochs: 50
+  max_epochs: 30
   gradient_clip_val: 5.0
   val_check_interval: 1.00
 
 # data loader
 loader:
-  batch_size: 32
+  batch_size: 48
   pin_memory: false
   num_workers: 0
 
@@ -27,7 +27,7 @@ dataset:
 logger:
   name: null
   version: null
-  save_dir: ~/logs/intphys
+  save_dir: ~/logs/intphys/hparams
 
 # checkpoint
 checkpoint:
@@ -37,6 +37,9 @@ checkpoint:
   monitor: "val_accuracy"
   mode: "max"
   prefix: ""
+
+# pretrained
+pretrained: null
 
 # model
 defaults:

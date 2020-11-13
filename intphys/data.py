@@ -13,6 +13,7 @@ from torchvision.io import read_video, read_video_timestamps
 from torchvision.transforms import Lambda, ToTensor
 import numpy as np
 import cv2
+from tqdm import tqdm
 
 
 UNK = "<UNK>"
@@ -117,7 +118,8 @@ class IntuitivePhysicsDataset(data.Dataset):
         self.transform = transform
         self.normalize = normalization
         self.sim_input = None # depends on model
-        self.fps = 3
+        self.fps = fps
+        self.cache = dict()
 
         self.read_jsonfile()
         self.build_vocabs()
@@ -145,6 +147,11 @@ class IntuitivePhysicsDataset(data.Dataset):
         for sim in simulations:
             self.questions.extend(sim["questions"]["questions"])
 
+    def build_cache(self):
+        for item in tqdm(self.questions):
+            if item['video_index'] in self.cache.keys(): continue
+            self.cache[item['video_index']] = self.read_simulation(item)
+
     def adapt2model(self, model):
         self.sim_input = model.SIMULATION_INPUT
 
@@ -159,7 +166,8 @@ class IntuitivePhysicsDataset(data.Dataset):
         path = osp.abspath(osp.join(self.datadir, "..", path))
         image = cv2.imread(path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        return torch.tensor(image).permute(2, 0, 1)
+        image = torch.tensor(image).permute(2, 0, 1)
+        return self.postprocess_simulation(image)
 
     def read_first_frame(self, item):
         return self.read_frame(item)
@@ -179,10 +187,11 @@ class IntuitivePhysicsDataset(data.Dataset):
             filename = filename.replace(".mpg", ".mp4")
         video_path = osp.abspath(osp.join(self.datadir, "..", filename))
         video = read_video(video_path, pts_unit="sec")[0]
-        return rearrange_dimensions(video)
+        video = rearrange_dimensions(video)
+        return video
 
     def read_no_frames(self, item):
-        return torch.zeros(1)
+        return (torch.zeros(1),)
 
     def postprocess_simulation(self, simulation):
         processed = simulation
@@ -205,14 +214,11 @@ class IntuitivePhysicsDataset(data.Dataset):
 
     def __getitem__(self, idx):
         item = self.questions[idx]
-        simulation = self.read_simulation(item)
-        if self.sim_input == SimulationInput.NO_FRAMES:
-            simulation = (simulation, )
-        elif isinstance(simulation, torch.Tensor):
-            simulation = (self.postprocess_simulation(simulation),)
-        elif isinstance(simulation, tuple):
-            simulation = tuple(
-                self.postprocess_simulation(x) for x in simulation)
+        simulation = self.cache.get(
+            item['video_index'],
+            self.read_simulation(item))
+        if isinstance(simulation, torch.Tensor):
+            simulation = (simulation,)
         question = self.question_vocab[item["question"]]
         answer = self.answer_vocab[tokenize_sentence(str(item["answer"]))]
         item_dict = {

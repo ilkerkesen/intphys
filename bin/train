@@ -49,6 +49,10 @@ def train(config):
     train_data.adapt2model(experiment.model)
     val_data.adapt2model(experiment.model)
 
+    # simulation caching
+    train_data.build_cache()
+    val_data.build_cache()
+
     # create data loaders
     train_dataloader = DataLoader(train_data,
                                   shuffle=True,
@@ -58,6 +62,12 @@ def train(config):
                                 shuffle=False,
                                 collate_fn=collate_fn,
                                 **config["loader"])
+
+
+    # load pretrained if any
+    if config["pretrained"] is not None:
+        ckpt = torch.load(config["pretrained"])
+        experiment.model.load_state_dict(ckpt["state_dict"], strict=False)
 
     # trainer
     trainer = pl.Trainer(
