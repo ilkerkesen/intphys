@@ -112,13 +112,15 @@ class IntuitivePhysicsDataset(data.Dataset):
             split="train",
             normalization=Lambda(lambda x: x/255.),
             transform=None,
-            fps=3):
+            fps=3,
+            cached=True):
         self.datadir = osp.abspath(osp.expanduser(path))
         self.split = split
         self.transform = transform
         self.normalize = normalization
         self.sim_input = None # depends on model
         self.fps = fps
+        self.cached = cached
         self.cache = dict()
 
         self.read_jsonfile()
@@ -148,6 +150,7 @@ class IntuitivePhysicsDataset(data.Dataset):
             self.questions.extend(sim["questions"]["questions"])
 
     def build_cache(self):
+        if not self.cached: return
         items = {(q["video_index"], q["video_filename"])
                  for q in self.questions}
         items = [{"video_index": x[0], "video_filename": x[1]}
@@ -158,6 +161,7 @@ class IntuitivePhysicsDataset(data.Dataset):
 
     def adapt2model(self, model):
         self.sim_input = model.SIMULATION_INPUT
+        self.build_cache()
 
     def read_simulation(self, item):
         sim_input = str(self.sim_input).split(".")[1]
@@ -217,27 +221,33 @@ class IntuitivePhysicsDataset(data.Dataset):
         return len(self.questions)
 
     def __getitem__(self, idx):
-        item = self.questions[idx]
-        if item['video_index'] in self.cache.keys():
-            simulation = self.cache[item['video_index']]
-        else:
-            print("read op: split={}, video_index={}".format(
-                self.split, item["video_index"]))
-            simulation = self.read_simulation(item)
-        if isinstance(simulation, torch.Tensor):
-            simulation = (simulation,)
-        question = self.question_vocab[item["question"]]
-        answer = self.answer_vocab[tokenize_sentence(str(item["answer"]))]
-        item_dict = {
-            "simulation": simulation,
-            "question": torch.tensor(question),
-            "answer": torch.tensor(answer),
-            "template": osp.splitext(item["template_filename"])[0],
-            "video": item["video"],
-            "video_index": item["video_index"],
-            "question_index": item["question_index"],
-        }
-        return item_dict
+        try:
+            item = self.questions[idx]
+            if self.cached and item['video_index'] in self.cache.keys():
+                simulation = self.cache[item['video_index']]
+            elif not self.cached:
+                simulation = self.read_simulation(item)
+            else:
+                print("read simulation op: split={}, video_index={}".format(
+                    self.split, item["video_index"]))
+            if isinstance(simulation, torch.Tensor):
+                simulation = (simulation,)
+            question = self.question_vocab[item["question"]]
+            answer = self.answer_vocab[tokenize_sentence(str(item["answer"]))]
+            item_dict = {
+                "simulation": simulation,
+                "question": torch.tensor(question),
+                "answer": torch.tensor(answer),
+                "template": osp.splitext(item["template_filename"])[0],
+                "video": item["video"],
+                "video_index": item["video_index"],
+                "question_index": item["question_index"],
+            }
+            return item_dict
+        except:
+            print("idx, video_index, err = {}, {}".format(
+                idx, item['video_index']))
+            exit()
 
 
 def base_collate_fn(batch):

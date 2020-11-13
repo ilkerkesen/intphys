@@ -24,7 +24,8 @@ class LSTMBaseline(nn.Module):
         super().__init__()
         config["question_encoder"]["vocab_size"] = config["input_size"]
         self.question_encoder = LSTMEncoder(config["question_encoder"])
-        self.linear = nn.Linear(config["hidden_size"], config["output_size"])
+        self.linear = nn.Linear(
+            config["question_encoder"]["hidden_size"], config["output_size"])
         self.dropout = nn.Dropout(p=config["dropout"])
         self.config = config
 

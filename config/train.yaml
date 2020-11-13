@@ -22,6 +22,8 @@ loader:
 # dataset
 dataset:
   path: ~/data/intphys/Dataset_3000_230920
+  fps: 3
+  cached: true
 
 # logger (tensorboard)
 logger:

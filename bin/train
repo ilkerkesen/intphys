@@ -49,10 +49,6 @@ def train(config):
     train_data.adapt2model(experiment.model)
     val_data.adapt2model(experiment.model)
 
-    # simulation caching
-    train_data.build_cache()
-    val_data.build_cache()
-
     # create data loaders
     train_dataloader = DataLoader(train_data,
                                   shuffle=True,
