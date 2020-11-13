@@ -15,7 +15,7 @@ trainer:
 
 # data loader
 loader:
-  batch_size: 48
+  batch_size: 24
   pin_memory: false
   num_workers: 0
 

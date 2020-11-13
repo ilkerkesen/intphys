@@ -148,8 +148,12 @@ class IntuitivePhysicsDataset(data.Dataset):
             self.questions.extend(sim["questions"]["questions"])
 
     def build_cache(self):
-        for item in tqdm(self.questions):
-            if item['video_index'] in self.cache.keys(): continue
+        items = {(q["video_index"], q["video_filename"])
+                 for q in self.questions}
+        items = [{"video_index": x[0], "video_filename": x[1]}
+                 for x in items]
+        for item in tqdm(items):
+            if item["video_index"] in self.cache.keys(): continue
             self.cache[item['video_index']] = self.read_simulation(item)
 
     def adapt2model(self, model):
@@ -188,7 +192,7 @@ class IntuitivePhysicsDataset(data.Dataset):
         video_path = osp.abspath(osp.join(self.datadir, "..", filename))
         video = read_video(video_path, pts_unit="sec")[0]
         video = rearrange_dimensions(video)
-        return video
+        return self.postprocess_simulation(video)
 
     def read_no_frames(self, item):
         return (torch.zeros(1),)
@@ -214,9 +218,12 @@ class IntuitivePhysicsDataset(data.Dataset):
 
     def __getitem__(self, idx):
         item = self.questions[idx]
-        simulation = self.cache.get(
-            item['video_index'],
-            self.read_simulation(item))
+        if item['video_index'] in self.cache.keys():
+            simulation = self.cache[item['video_index']]
+        else:
+            print("read op: split={}, video_index={}".format(
+                self.split, item["video_index"]))
+            simulation = self.read_simulation(item)
         if isinstance(simulation, torch.Tensor):
             simulation = (simulation,)
         question = self.question_vocab[item["question"]]
