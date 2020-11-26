@@ -6,6 +6,7 @@ from itertools import repeat
 
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 import pytorch_lightning as pl
 from .model import *
 
@@ -47,6 +48,7 @@ class Experiment(pl.LightningModule):
 
     def validation_step(self, batch, batch_index):
         return self.batch_accuracy(batch, batch_index)
+
 
     def validation_epoch_end(self, outputs):
         split = self.val_dataloader().dataset.split

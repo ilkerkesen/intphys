@@ -1,0 +1,21 @@
+model:
+  architecture: LSTMCNNVideoBaseline
+  input_size: null
+  output_size: null
+  dropout: 0.2
+  question_encoder:
+    architecture: LSTMEncoder
+    hidden_size: 256
+    embed_size: 256
+    vocab_size: null
+  frame_encoder:
+    architecture: r3d_18
+    input_size: 256
+    pretrained: true
+    freeze: true
+    num_layers: 4
+  mlp:
+    activation: tanh
+    num_layers: 1
+    hidden_size: 256
+    input_size: null

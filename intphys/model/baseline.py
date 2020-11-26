@@ -10,6 +10,7 @@ __all__ = (
     "LSTMCNNBaselineFF",
     "LSTMCNNBaselineLF",
     "LSTMCNNBaseline2F",
+    "LSTMCNNVideoBaseline",
 )
 
 
@@ -42,6 +43,7 @@ class LSTMCNNBaseline(nn.Module):
     def __init__(self, config):
         super().__init__()
         config["question_encoder"]["vocab_size"] = config["input_size"]
+        config["frame_encoder"]["depth_size"] = config["depth_size"]
         self.config = config
         self.frame_encoder = self.create_submodule("frame_encoder")
         self.question_encoder = self.create_submodule("question_encoder")
@@ -93,9 +95,14 @@ class LSTMCNNBaseline2F(LSTMCNNBaseline):
     NUM_VIDEO_FRAMES = 2
 
     def process_simulation(self, simulations, **kwargs):
-        y = self.convnet(simulations)
+        y = self.frame_encoder(simulations)
         y = self.flatten(y)
         batch_size = y.size(0) // 2
         first_frames, last_frames = y[:batch_size], y[batch_size:]
         y = torch.cat([first_frames, last_frames], dim=1)
         return y
+
+
+class LSTMCNNVideoBaseline(LSTMCNNBaseline):
+    SIMULATION_INPUT = SimulationInput.VIDEO
+    NUM_VIDEO_FRAMES = 1 # see parent class constructor

@@ -27,6 +27,8 @@ def train(config):
     # load data
     train_data = IntuitivePhysicsDataset(split="train", **config["dataset"])
     val_data = IntuitivePhysicsDataset(split="validation", **config["dataset"])
+    # test_data = IntuitivePhysicsDataset(split="test", **config["dataset"])
+    # train_data = val_data = test_data
 
     # logger / checkpoint
     config["logger"]["save_dir"] = osp.abspath(
@@ -43,6 +45,8 @@ def train(config):
         config["model"]["input_size"] = len(train_data.question_vocab)
     if config["model"].get("output_size") is None:
         config["model"]["output_size"] = len(train_data.answer_vocab)
+    if config["model"].get("depth_size") is None:
+        config["model"]["depth_size"] = train_data.fps * train_data.num_seconds
     experiment = Experiment(config)
 
     # setup dataset params depend on model
@@ -58,7 +62,6 @@ def train(config):
                                 shuffle=False,
                                 collate_fn=collate_fn,
                                 **config["loader"])
-
 
     # load pretrained if any
     if config["pretrained"] is not None:

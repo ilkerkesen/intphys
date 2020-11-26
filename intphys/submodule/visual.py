@@ -6,9 +6,6 @@ import torch.nn as nn
 from torchvision.models import resnet18 as _resnet18
 
 
-from .base import MLP
-
-
 class CNN2Dv1(nn.Module):
     def __init__(self, config):
         super().__init__()

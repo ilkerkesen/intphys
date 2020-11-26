@@ -10,7 +10,7 @@ from copy import deepcopy
 import torch
 import torch.utils.data as data
 from torchvision.io import read_video, read_video_timestamps
-from torchvision.transforms import Lambda, ToTensor
+from torchvision.transforms import Lambda, ToTensor, Normalize
 import numpy as np
 import cv2
 from tqdm import tqdm
@@ -110,16 +110,22 @@ class IntuitivePhysicsDataset(data.Dataset):
     def __init__(
             self, path,
             split="train",
-            normalization=Lambda(lambda x: x/255.),
+            # normalization=Lambda(lambda x: x/255.),
+            # normalization =Normalize(mean=[0.485, 0.456, 0.406],
+            #                      std=[0.229, 0.224, 0.225])
             transform=None,
             fps=3,
-            cached=True):
+            cached=True,
+            num_seconds=10):
         self.datadir = osp.abspath(osp.expanduser(path))
         self.split = split
         self.transform = transform
-        self.normalize = normalization
+        # self.normalize = normalization
+        self.normalize = Normalize(mean=[0.485, 0.456, 0.406],
+                                   std=[0.229, 0.224, 0.225])
         self.sim_input = None # depends on model
         self.fps = fps
+        self.num_seconds = num_seconds
         self.cached = cached
         self.cache = dict()
 
@@ -174,7 +180,7 @@ class IntuitivePhysicsDataset(data.Dataset):
         path = osp.abspath(osp.join(self.datadir, "..", path))
         image = cv2.imread(path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = torch.tensor(image).permute(2, 0, 1)
+        image = torch.tensor(image).permute(2, 0, 1) / 255.0
         return self.postprocess_simulation(image)
 
     def read_first_frame(self, item):
@@ -221,33 +227,28 @@ class IntuitivePhysicsDataset(data.Dataset):
         return len(self.questions)
 
     def __getitem__(self, idx):
-        try:
-            item = self.questions[idx]
-            if self.cached and item['video_index'] in self.cache.keys():
-                simulation = self.cache[item['video_index']]
-            elif not self.cached:
-                simulation = self.read_simulation(item)
-            else:
-                print("read simulation op: split={}, video_index={}".format(
-                    self.split, item["video_index"]))
-            if isinstance(simulation, torch.Tensor):
-                simulation = (simulation,)
-            question = self.question_vocab[item["question"]]
-            answer = self.answer_vocab[tokenize_sentence(str(item["answer"]))]
-            item_dict = {
-                "simulation": simulation,
-                "question": torch.tensor(question),
-                "answer": torch.tensor(answer),
-                "template": osp.splitext(item["template_filename"])[0],
-                "video": item["video"],
-                "video_index": item["video_index"],
-                "question_index": item["question_index"],
-            }
-            return item_dict
-        except:
-            print("idx, video_index, err = {}, {}".format(
-                idx, item['video_index']))
-            exit()
+        item = self.questions[idx]
+        if self.cached and item['video_index'] in self.cache.keys():
+            simulation = self.cache[item['video_index']]
+        elif not self.cached:
+            simulation = self.read_simulation(item)
+        else:
+            print("read simulation op: split={}, video_index={}".format(
+                self.split, item["video_index"]))
+        if isinstance(simulation, torch.Tensor):
+            simulation = (simulation,)
+        question = self.question_vocab[item["question"]]
+        answer = self.answer_vocab[tokenize_sentence(str(item["answer"]))]
+        item_dict = {
+            "simulation": simulation,
+            "question": torch.tensor(question),
+            "answer": torch.tensor(answer),
+            "template": osp.splitext(item["template_filename"])[0],
+            "video": item["video"],
+            "video_index": item["video_index"],
+            "question_index": item["question_index"],
+        }
+        return item_dict
 
 
 def base_collate_fn(batch):
@@ -270,6 +271,7 @@ def base_collate_fn(batch):
 
 
 def train_collate_fn(unsorted_batch):
+    unsorted_batch = [x for x in unsorted_batch if x is not None]
     batch = sorted(unsorted_batch,
                    key=lambda x: len(x["question"]),
                    reverse=True)
@@ -280,6 +282,7 @@ def train_collate_fn(unsorted_batch):
 
 
 def inference_collate_fn(unsorted_batch):
+    unsorted_batch = [x for x in unsorted_batch if x is not None]
     batch = sorted(unsorted_batch,
                    key=lambda x: len(x["question"]),
                    reverse=True)
