@@ -4,12 +4,14 @@ from copy import copy
 import torch
 import torch.nn as nn
 from torchvision.models import resnet18 as _resnet18
+from torchvision.transforms import Compose, Normalize, Lambda
 
 
 class CNN2Dv1(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        self.normalizer = None
         self.setup_layers()
 
     def forward(self, x):
@@ -52,6 +54,7 @@ def resnet18(config):
     net = _resnet18(pretrained=config["pretrained"], progress=True)
     layers = list(net.children())
     net = nn.Sequential(*layers[:4+config["num_layers"]])
+    net.normalizer = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     if config["pretrained"] and config["freeze"]:
         for par in net.parameters():
             par.requires_grad = False

@@ -110,9 +110,6 @@ class IntuitivePhysicsDataset(data.Dataset):
     def __init__(
             self, path,
             split="train",
-            # normalization=Lambda(lambda x: x/255.),
-            # normalization =Normalize(mean=[0.485, 0.456, 0.406],
-            #                      std=[0.229, 0.224, 0.225])
             transform=None,
             fps=3,
             cached=True,
@@ -120,9 +117,7 @@ class IntuitivePhysicsDataset(data.Dataset):
         self.datadir = osp.abspath(osp.expanduser(path))
         self.split = split
         self.transform = transform
-        # self.normalize = normalization
-        self.normalize = Normalize(mean=[0.485, 0.456, 0.406],
-                                   std=[0.229, 0.224, 0.225])
+        self.normalizer = None
         self.sim_input = None # depends on model
         self.fps = fps
         self.num_seconds = num_seconds
@@ -156,7 +151,6 @@ class IntuitivePhysicsDataset(data.Dataset):
             self.questions.extend(sim["questions"]["questions"])
 
     def build_cache(self):
-        if not self.cached: return
         items = {(q["video_index"], q["video_filename"])
                  for q in self.questions}
         items = [{"video_index": x[0], "video_filename": x[1]}
@@ -167,7 +161,11 @@ class IntuitivePhysicsDataset(data.Dataset):
 
     def adapt2model(self, model):
         self.sim_input = model.SIMULATION_INPUT
-        self.build_cache()
+        try:
+            self.normalizer = model.frame_encoder.normalizer
+        except AttributeError:
+            pass
+        if self.cached: self.build_cache()
 
     def read_simulation(self, item):
         sim_input = str(self.sim_input).split(".")[1]
@@ -202,7 +200,7 @@ class IntuitivePhysicsDataset(data.Dataset):
         video_path = osp.abspath(osp.join(self.datadir, "..", filename))
         video = read_video(video_path, pts_unit="sec")[0]
         video = rearrange_dimensions(video)
-        return self.postprocess_simulation(video)
+        return self.postprocess_simulation(video / 255.)
 
     def read_no_frames(self, item):
         return (torch.zeros(1),)
@@ -211,8 +209,8 @@ class IntuitivePhysicsDataset(data.Dataset):
         processed = simulation
 
         # normalization
-        if self.normalize is not None:
-            processed = self.normalize(processed)
+        if self.normalizer is not None:
+            processed = self.normalizer(processed)
 
         # transformation after normalization
         if self.transform is not None:

@@ -2,7 +2,7 @@ model:
   architecture: LSTMCNNVideoBaseline
   input_size: null
   output_size: null
-  dropout: 0.2
+  dropout: 0.0
   question_encoder:
     architecture: LSTMEncoder
     hidden_size: 256
@@ -12,7 +12,7 @@ model:
     architecture: r3d_18
     input_size: 256
     pretrained: true
-    freeze: true
+    freeze: false
     num_layers: 4
   mlp:
     activation: tanh

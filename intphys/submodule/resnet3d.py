@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torchvision.models.video import r3d_18 as _r3d_18
+from torchvision.transforms import Compose, Normalize, Lambda
 
 
 def r3d_18(config):
@@ -16,5 +17,6 @@ def r3d_18(config):
     for i in range(config["num_layers"]-2):
         out_depth = (out_depth+1) // 2
     net.out_features = out_depth * out_channels * out_size * out_size
+    net.normalizer = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     net.config = config
     return net
