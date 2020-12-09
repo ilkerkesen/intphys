@@ -14,7 +14,8 @@ import hydra
 from intphys import *
 from intphys.data import train_collate_fn as collate_fn
 from intphys.data import SimulationInput
-from intphys.experiment import Experiment
+from intphys.experiment import Experiment, Overfit
+
 
 CONFIG_DIR = osp.abspath(osp.join(__file__, "../..", "config"))
 
@@ -27,8 +28,6 @@ def train(config):
     # load data
     train_data = IntuitivePhysicsDataset(split="train", **config["dataset"])
     val_data = IntuitivePhysicsDataset(split="validation", **config["dataset"])
-    # test_data = IntuitivePhysicsDataset(split="test", **config["dataset"])
-    # train_data = val_data = test_data
 
     # logger / checkpoint
     config["logger"]["save_dir"] = osp.abspath(
@@ -41,24 +40,26 @@ def train(config):
     checkpoint_callback = pl.callbacks.ModelCheckpoint(**config["checkpoint"])
 
     # data dependent parameters
+    dataset = train_data
     if config["model"].get("input_size") is None:
-        config["model"]["input_size"] = len(train_data.question_vocab)
+        config["model"]["input_size"] = len(dataset.question_vocab)
     if config["model"].get("output_size") is None:
-        config["model"]["output_size"] = len(train_data.answer_vocab)
+        config["model"]["output_size"] = len(dataset.answer_vocab)
     if config["model"].get("depth_size") is None:
-        config["model"]["depth_size"] = train_data.fps * train_data.num_seconds
-    experiment = Experiment(config)
-
-    # setup dataset params depend on model
-    train_data.adapt2model(experiment.model)
-    val_data.adapt2model(experiment.model)
+        config["model"]["depth_size"] = dataset.fps * dataset.num_seconds
+    experiment = Experiment(config) if not config["overfit"] else Overfit(config)
 
     # create data loaders
+    train_data.adapt2model(experiment.model)
     train_dataloader = DataLoader(train_data,
                                   shuffle=True,
                                   collate_fn=collate_fn,
                                   **config["loader"])
-    val_dataloader = DataLoader(val_data,
+
+    val_dataloader = None
+    if not config["overfit"]:
+        val_data.adapt2model(experiment.model)
+        val_dataloader = DataLoader(val_data,
                                 shuffle=False,
                                 collate_fn=collate_fn,
                                 **config["loader"])
@@ -74,15 +75,19 @@ def train(config):
         checkpoint_callback=checkpoint_callback,
         **config["trainer"])
 
-    # train
-    if config["train"]:
+    # overfit
+    if config["overfit"]:
+        trainer.fit(experiment, train_dataloader=train_dataloader)
+
+    # training
+    if config["train"] and not config["overfit"]:
         trainer.fit(
             experiment,
             train_dataloader=train_dataloader,
             val_dataloaders=val_dataloader)
 
     # test
-    if config["test"]:
+    if config["test"] and not config["overfit"]:
         test_data = IntuitivePhysicsDataset(split="test", **config["dataset"])
         test_data.adapt2model(experiment.model)
         test_dataloader = DataLoader(

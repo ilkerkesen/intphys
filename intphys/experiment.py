@@ -11,14 +11,13 @@ import pytorch_lightning as pl
 from .model import *
 
 
-
 __all__ = (
+    'Overfit',
     'Experiment',
-    'TSVExportCallback',
 )
 
 
-class Experiment(pl.LightningModule):
+class Overfit(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -46,13 +45,34 @@ class Experiment(pl.LightningModule):
         return {"train_loss": loss, "train_accuracy": acc,
                 "log": logs, "progress_bar": logs}
 
+    def configure_optimizers(self):
+        optimizer = eval("torch.optim.{}".format(
+            self.config["optimizer"]["method"]))
+        optimizers = [optimizer(
+            self.model.parameters(),
+            **self.config["optimizer"]["params"])]
+        if self.config.get("scheduler") is None: return optimizers, []
+        
+        scheduler = eval("torch.optim.lr_scheduler.{}".format(
+            self.config["scheduler"]["method"]))
+        schedulers = [{
+            "scheduler": scheduler(
+                optimizers[0], **self.config["scheduler"]["params"]),
+            "monitor": "val_loss",
+            "interval": "epoch",
+            "frequency": 1,
+            "strict": True,
+        }]
+        return optimizers, schedulers    
+
+
+class Experiment(Overfit):
     def validation_step(self, batch, batch_index):
         return self.batch_accuracy(batch, batch_index)
 
-
     def validation_epoch_end(self, outputs):
-        split = self.val_dataloader().dataset.split
-        split = "val" if split.startswith("val") else split
+        dataset = self.get_dataset(self.val_dataloader())
+        split = "val" if dataset.split.startswith("val") else dataset.split
         return self.calculate_accuracy(outputs, split=split)
 
     def test_step(self, batch, batch_index):
@@ -93,9 +113,6 @@ class Experiment(pl.LightningModule):
                 "log": tensorboard_logs,
                 "progress_bar": tensorboard_logs}
 
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.model.parameters(), lr=self.config["optimizer"]["lr"])
-
     @property
     def generate_flag(self):
         return self._generate_flag
@@ -105,7 +122,7 @@ class Experiment(pl.LightningModule):
         self._generate_flag = flag
 
     def write_generations(self, vids, qids, predictions):
-        dataset = self.test_dataloader().dataset
+        dataset = self.get_dataset(self.test_dataloader())
         split, vocab = dataset.split, dataset.answer_vocab
         vocab = dataset.answer_vocab
         zipped = zip(vids, qids, repeat(split), vocab[predictions.tolist()])
@@ -114,13 +131,5 @@ class Experiment(pl.LightningModule):
         with open(filepath, "a") as f:
             f.writelines(lines)
 
-
-class TSVExportCallback(pl.Callback):
-    def on_test_start(self, trainer, pl_module):
-        if pl_module.generate_flag == False:
-            return
-        filepath = pl_module.config["output"]
-        parent_dir = osp.dirname(filepath)
-        osp.makedirs(parent_dir) if not osp.isdir(parent_dir) else None
-        with open(filepath, "w") as f:
-            f.write("video_index\tquestion_index\tsplit\tprediction\n")
+    def get_dataset(self, data_loader):
+        return data_loader.dataset
