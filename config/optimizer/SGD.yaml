@@ -1,0 +1,4 @@
+optimizer:
+  method: SGD
+  params:
+    lr: 0.1

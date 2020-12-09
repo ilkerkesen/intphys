@@ -1,0 +1,4 @@
+optimizer:
+  method: Adam
+  params:
+    lr: 0.0003

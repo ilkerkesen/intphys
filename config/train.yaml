@@ -6,26 +6,26 @@ hydra:
 # experiment
 seed: 1
 train: true
+overfit: false
 test: true
 trainer:
   gpus: 1
   max_epochs: 30
-  gradient_clip_val: 5.0
+  gradient_clip_val: 1.0
   val_check_interval: 1.00
-optimizer:
-  lr: 0.0001
 
 # data loader
 loader:
-  batch_size: 24
+  batch_size: 16
   pin_memory: false
   num_workers: 0
 
 # dataset
 dataset:
   path: ~/data/intphys/Dataset_3000_230920
-  fps: 3
+  fps: 1
   cached: true
+  num_examples: null
 
 # logger (tensorboard)
 logger:
@@ -45,7 +45,9 @@ checkpoint:
 # pretrained
 pretrained: null
 
-# model
+# defaults
 defaults:
   - model: Baseline
+  - optimizer: Adam
+  - scheduler: ReduceLROnPlateau
   - hydra/job_logging: disabled
