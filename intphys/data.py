@@ -113,7 +113,8 @@ class IntuitivePhysicsDataset(data.Dataset):
             transform=None,
             fps=3,
             cached=True,
-            num_seconds=10):
+            num_seconds=10,
+            num_examples=None):
         self.datadir = osp.abspath(osp.expanduser(path))
         self.split = split
         self.transform = transform
@@ -121,12 +122,16 @@ class IntuitivePhysicsDataset(data.Dataset):
         self.sim_input = None # depends on model
         self.fps = fps
         self.num_seconds = num_seconds
+        self.num_examples = num_examples
         self.cached = cached
         self.cache = dict()
 
         self.read_jsonfile()
         self.build_vocabs()
         self.build_split()
+
+        if num_examples is not None and num_examples > 0:
+            self.indices = torch.randperm(len(self.questions))[:num_examples]
 
     def read_jsonfile(self):
         with open(osp.join(self.datadir, "dataset.json")) as f:
@@ -151,8 +156,11 @@ class IntuitivePhysicsDataset(data.Dataset):
             self.questions.extend(sim["questions"]["questions"])
 
     def build_cache(self):
+        questions = self.questions
+        if self.num_examples is not None and self.num_examples > 0:
+            questions = [questions[i] for i in self.indices]
         items = {(q["video_index"], q["video_filename"])
-                 for q in self.questions}
+                 for q in questions}
         items = [{"video_index": x[0], "video_filename": x[1]}
                  for x in items]
         for item in tqdm(items):
@@ -218,13 +226,15 @@ class IntuitivePhysicsDataset(data.Dataset):
 
         # make it appropriate for minibatching
         processed = processed.unsqueeze(0)
-
         return processed
 
     def __len__(self):
+        if self.num_examples is not None: return self.num_examples
         return len(self.questions)
 
     def __getitem__(self, idx):
+        if self.num_examples is not None and self.num_examples > 0:
+            idx = self.indices[idx]
         item = self.questions[idx]
         if self.cached and item['video_index'] in self.cache.keys():
             simulation = self.cache[item['video_index']]
