@@ -94,11 +94,20 @@ class LSTMCNNBaseline2F(LSTMCNNBaseline):
     SIMULATION_INPUT = SimulationInput.FIRST_AND_LAST_FRAMES
     NUM_VIDEO_FRAMES = 2
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.first_frame_encoder = self.frame_encoder
+        self.last_frame_encoder = self.create_submodule("frame_encoder")
+
     def process_simulation(self, simulations, **kwargs):
-        y = self.frame_encoder(simulations)
-        y = self.flatten(y)
-        batch_size = y.size(0) // 2
-        first_frames, last_frames = y[:batch_size], y[batch_size:]
+        batch_size = simulations.size(0) // 2
+        
+        first_frames = self.first_frame_encoder(simulations[:batch_size])
+        first_frames = self.flatten(first_frames)
+        
+        last_frames = self.last_frame_encoder(simulations[batch_size:])
+        last_frames = self.flatten(last_frames)
+
         y = torch.cat([first_frames, last_frames], dim=1)
         return y
 
