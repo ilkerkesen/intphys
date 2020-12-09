@@ -5,8 +5,8 @@ model:
   dropout: 0.0
   question_encoder:
     architecture: LSTMEncoder
-    hidden_size: 256
-    embed_size: 256
+    hidden_size: 512
+    embed_size: 512
     vocab_size: null
   frame_encoder:
     architecture: r3d_18
@@ -15,7 +15,7 @@ model:
     freeze: false
     num_layers: 4
   mlp:
-    activation: tanh
-    num_layers: 1
-    hidden_size: 256
+    activation: relu
+    num_layers: 2
+    hidden_size: 512
     input_size: null
