@@ -3,6 +3,7 @@
 
 import os
 import os.path as osp
+from copy import deepcopy
 
 import torch
 import torch.nn as nn
@@ -10,18 +11,30 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 import hydra
+from omegaconf import OmegaConf
 
 from intphys import *
 from intphys.data import train_collate_fn as collate_fn
-from intphys.data import SimulationInput
+from intphys.data import SimulationInput, IntuitivePhysicsDataset
 from intphys.experiment import Experiment, Overfit
 
 
 CONFIG_DIR = osp.abspath(osp.join(__file__, "../..", "config"))
 
 
-@hydra.main(config_path=osp.join(CONFIG_DIR, "train.yaml"), strict=False)
+def adapt2data(config, dataset):
+    if config["model"].get("input_size") is None:
+        config["model"]["input_size"] = len(dataset.question_vocab)
+    if config["model"].get("output_size") is None:
+        config["model"]["output_size"] = len(dataset.answer_vocab)
+    if config["model"].get("depth_size") is None:
+        config["model"]["depth_size"] = dataset.fps * dataset.num_seconds
+    return config
+
+
+@hydra.main(config_path=CONFIG_DIR, config_name="train")
 def train(config):
+    config = OmegaConf.to_container(config)
     config = pl.utilities.parsing.AttributeDict(config)
     pl.seed_everything(config["seed"])
 
@@ -29,50 +42,58 @@ def train(config):
     train_data = IntuitivePhysicsDataset(split="train", **config["dataset"])
     val_data = IntuitivePhysicsDataset(split="validation", **config["dataset"])
 
-    # logger / checkpoint
+    # logger
     config["logger"]["save_dir"] = osp.abspath(
         osp.expanduser(config["logger"]["save_dir"]))
     if config["logger"]["name"] is None:
         config["logger"]["name"] = config["model"]["architecture"]
     logger = pl.loggers.TensorBoardLogger(**config["logger"])
-    config["checkpoint"]["filepath"] = osp.join(
-        logger.log_dir, "checkpoints/{epoch:03d}")
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(**config["checkpoint"])
 
-    # data dependent parameters
-    dataset = train_data
-    if config["model"].get("input_size") is None:
-        config["model"]["input_size"] = len(dataset.question_vocab)
-    if config["model"].get("output_size") is None:
-        config["model"]["output_size"] = len(dataset.answer_vocab)
-    if config["model"].get("depth_size") is None:
-        config["model"]["depth_size"] = dataset.fps * dataset.num_seconds
-    experiment = Experiment(config) if not config["overfit"] else Overfit(config)
+    # checkpoint
+    checkpoint_path = osp.join(logger.log_dir, "checkpoints")
+    config["checkpoint"]["filepath"] = osp.join(checkpoint_path, "{epoch:03d}")
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(**config["checkpoint"])
+    last_ckpt = osp.join(checkpoint_path, "last.ckpt")
+    ckpt_path = config["trainer"]["resume_from_checkpoint"]
+
+    if osp.isfile(last_ckpt) and ckpt_path is not None:
+        raise Exception("resume checkpoint passed (last.ckpt exists already)")
+    
+    if config["trainer"]["resume_from_checkpoint"] is None:
+        config["trainer"]["resume_from_checkpoint"] = ckpt_path = last_ckpt
+
+    if ckpt_path is not None and not osp.isfile(ckpt_path):
+        raise Exception("ckpt does not exist at {}".format(
+            config["trainer"]["resume_from_checkpoint"]))
+
+    # adapt model to dataset
+    config = adapt2data(deepcopy(config), train_data)
+
+    # initialize experiment
+    ThisExperiment = Experiment if not config["overfit"] else Overfit
+    experiment = ThisExperiment(config)
 
     # create data loaders
     train_data.adapt2model(experiment.model)
-    train_dataloader = DataLoader(train_data,
-                                  shuffle=True,
-                                  collate_fn=collate_fn,
-                                  **config["loader"])
+    train_dataloader = DataLoader(
+        train_data,
+        shuffle=True,
+        collate_fn=collate_fn,
+        **config["loader"])
 
     val_dataloader = None
     if not config["overfit"]:
         val_data.adapt2model(experiment.model)
-        val_dataloader = DataLoader(val_data,
-                                shuffle=False,
-                                collate_fn=collate_fn,
-                                **config["loader"])
+        val_dataloader = DataLoader(
+            val_data,
+            shuffle=False,
+            collate_fn=collate_fn,
+            **config["loader"])
 
-    # load pretrained if any
-    if config["pretrained"] is not None:
-        ckpt = torch.load(config["pretrained"])
-        experiment.model.load_state_dict(ckpt["state_dict"], strict=False)
-
-    # trainer
+    # create trainer object
     trainer = pl.Trainer(
         logger=logger,
-        checkpoint_callback=checkpoint_callback,
+        callbacks=[checkpoint_callback],
         **config["trainer"])
 
     # overfit

@@ -41,9 +41,8 @@ class Overfit(pl.LightningModule):
     def training_epoch_end(self, outputs):
         loss = torch.stack([x["loss"] for x in outputs]).mean()
         acc = torch.stack([x["accuracy"] for x in outputs]).mean()
-        logs = {"train_loss": loss, "train_accuracy": acc}
-        return {"train_loss": loss, "train_accuracy": acc,
-                "log": logs, "progress_bar": logs}
+        self.log("train_loss", loss, prog_bar=True)
+        self.log("train_accuracy", acc, prog_bar=True)
 
     def configure_optimizers(self):
         optimizer = eval("torch.optim.{}".format(
@@ -73,14 +72,14 @@ class Experiment(Overfit):
     def validation_epoch_end(self, outputs):
         dataset = self.get_dataset(self.val_dataloader())
         split = "val" if dataset.split.startswith("val") else dataset.split
-        return self.calculate_accuracy(outputs, split=split)
+        self.calculate_accuracy(outputs, split=split)
 
     def test_step(self, batch, batch_index):
         return self.batch_accuracy(batch, batch_index, testing=True)
 
     def test_epoch_end(self, outputs):
         split = self.test_dataloader().dataset.split
-        return self.calculate_accuracy(outputs, split=split)
+        self.calculate_accuracy(outputs, split=split)
 
     def batch_accuracy(self, batch, batch_index, testing=False):
         (simulations, questions, additional), (answers,) = batch
@@ -105,13 +104,8 @@ class Experiment(Overfit):
         loss = torch.stack([x["loss"] for x in outputs]).mean()
         num_instances = sum([x["num_instances"] for x in outputs])
         acc = correct.float() / num_instances
-        tensorboard_logs = {
-            "{}_accuracy".format(split): acc,
-            "{}_loss".format(split): loss}
-        return {"{}_loss".format(split): loss,
-                "{}_accuracy".format(split): acc,
-                "log": tensorboard_logs,
-                "progress_bar": tensorboard_logs}
+        self.log(f"{split}_loss", loss, prog_bar=True)
+        self.log(f"{split}_accuracy", acc, prog_bar=True)
 
     @property
     def generate_flag(self):
