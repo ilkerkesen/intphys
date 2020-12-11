@@ -6,6 +6,7 @@ hydra:
 # experiment
 seed: 1
 train: true
+resume: true
 overfit: false
 test: true
 trainer:
@@ -13,18 +14,19 @@ trainer:
   max_epochs: 30
   gradient_clip_val: 1.0
   val_check_interval: 1.00
+  resume_from_checkpoint: null
 
 # data loader
 loader:
   batch_size: 16
   pin_memory: false
-  num_workers: 0
+  num_workers: 16
 
 # dataset
 dataset:
   path: ~/data/intphys/Dataset_3000_230920
   fps: 1
-  cached: true
+  cached: false
   num_examples: null
 
 # logger (tensorboard)
@@ -41,9 +43,10 @@ checkpoint:
   monitor: "val_accuracy"
   mode: "max"
   prefix: ""
+  filepath: null
 
-# pretrained
-pretrained: null
+# resume training
+checkpoint_path: null
 
 # defaults
 defaults:
