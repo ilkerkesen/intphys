@@ -50,13 +50,14 @@ def train(config):
     logger = pl.loggers.TensorBoardLogger(**config["logger"])
 
     # checkpoint
-    checkpoint_path = osp.join(logger.log_dir, "checkpoints")
-    config["checkpoint"]["filepath"] = osp.join(checkpoint_path, "{epoch:03d}")
+    checkpoints_path = osp.join(logger.log_dir, "checkpoints")
+    config["checkpoint"]["filepath"] = osp.join(checkpoints_path, "{epoch:03d}")
     checkpoint_callback = pl.callbacks.ModelCheckpoint(**config["checkpoint"])
-    last_ckpt = osp.join(checkpoint_path, "last.ckpt")
+    last_ckpt = osp.join(checkpoints_path, "last.ckpt")
+    last_ckpt = last_ckpt if osp.isfile(last_ckpt) else None
     ckpt_path = config["trainer"]["resume_from_checkpoint"]
 
-    if osp.isfile(last_ckpt) and ckpt_path is not None:
+    if last_ckpt is not None and ckpt_path is not None:
         raise Exception("resume checkpoint passed (last.ckpt exists already)")
     
     if config["trainer"]["resume_from_checkpoint"] is None:
