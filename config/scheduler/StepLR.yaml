@@ -1,5 +1,4 @@
-scheduler:
-  method: StepLR
-  params:
-    step_size: 20
-    gamma: 0.5
+method: StepLR
+params:
+  step_size: 20
+  gamma: 0.5

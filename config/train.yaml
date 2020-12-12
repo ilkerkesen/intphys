@@ -33,7 +33,7 @@ dataset:
 logger:
   name: null
   version: null
-  save_dir: ~/logs/intphys/svrhm
+  save_dir: ~/logs/intphys/debug
 
 # checkpoint
 checkpoint:

@@ -1,22 +1,22 @@
-model:
-  architecture: FiLM2D
+# @package _group_
+architecture: FiLM2D
+input_size: null
+output_size: null
+dropout: 0.0
+question_encoder:
+  architecture: LSTMEncoder
+  hidden_size: 512
+  embed_size: 512
+  vocab_size: null
+frame_encoder:
+  num_channels: 64
+  num_layers: 4
+  input_size: 256
+  kernel_size: 5
+  stride: 2
+  padding: 2
+mlp:
+  activation: relu
+  num_layers: 2
+  hidden_size: 512
   input_size: null
-  output_size: null
-  dropout: 0.0
-  question_encoder:
-    architecture: LSTMEncoder
-    hidden_size: 512
-    embed_size: 512
-    vocab_size: null
-  frame_encoder:
-    num_channels: 32
-    num_layers: 4
-    input_size: 256
-    kernel_size: 5
-    stride: 2
-    padding: 2
-  mlp:
-    activation: relu
-    num_layers: 2
-    hidden_size: 512
-    input_size: null
