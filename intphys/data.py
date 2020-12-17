@@ -23,7 +23,8 @@ PUNCTUATION_REGEX = re.compile(r"([a-zA-Z0-9]+)(\W)")
 
 __all__ = (
     'SimulationInput',
-    'IntuitivePhysicsDataset',
+    'CRAFT',
+    'CLEVRER',
     'train_collate_fn',
     'inference_collate_fn',
 )
@@ -106,32 +107,104 @@ class Vocab(object):
         return len(self.w2i)
 
 
-class IntuitivePhysicsDataset(data.Dataset):
-    def __init__(
-            self, path,
-            split="train",
-            transform=None,
-            fps=3,
-            cached=True,
-            num_seconds=10,
-            num_examples=None):
+class BaseDataset(data.Dataset):
+    NUM_SECONDS = 0
+    HEIGHT = 0
+    WIDTH = 0
+
+    def __init__(self, path, split="train", fps=1, cached=False):
+        super().__init__()
         self.datadir = osp.abspath(osp.expanduser(path))
         self.split = split
-        self.transform = transform
-        self.normalizer = None
-        self.sim_input = None # depends on model
         self.fps = fps
-        self.num_seconds = num_seconds
-        self.num_examples = num_examples
+        self.normalizer = None
+        self.sim_input = None
         self.cached = cached
-        self.cache = dict()
+        self.transform = None
 
         self.read_jsonfile()
         self.build_vocabs()
         self.build_split()
+    
+    def adapt2model(self, model):
+        self.sim_input = model.SIMULATION_INPUT
+        try:
+            self.normalizer = model.frame_encoder.normalizer
+        except AttributeError:
+            pass
 
-        if num_examples is not None and num_examples > 0:
-            self.indices = torch.randperm(len(self.questions))[:num_examples]
+    def read_jsonfile(self):
+        raise NotImplementedError
+
+    def build_vocabs(self):
+        raise NotImplementedError
+
+    def build_split(self):
+        raise NotImplementedError
+
+    def read_simulation(self, path):
+        sim_input = str(self.sim_input).split(".")[1]
+        sim_func = eval("self.read_{}".format(sim_input.lower()))
+        return sim_func(path)
+
+    def read_frame(self, path, frame="first"):
+        image = cv2.imread(self.get_frame_path(path))
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = torch.tensor(image).permute(2, 0, 1)
+        return self.postprocess_simulation(image)
+
+    def read_first_frame(self, path):
+        return self.read_frame(path)
+
+    def read_last_frame(self, path):
+        return self.read_frame(path, frame="last")
+
+    def read_first_and_last_frames(self, path):
+        first_frame = self.read_first_frame(item)
+        last_frame = self.read_last_frame(item)
+        return (first_frame, last_frame)
+
+    def read_video(self, path):
+        # filename = item["video_filename"]
+        video = read_video(self.get_video_path(path), pts_unit="sec")[0]
+        video = rearrange_dimensions(video)
+        return self.postprocess_simulation(video)
+
+    def read_no_frames(self, item):
+        return (torch.zeros(1),)
+
+    def postprocess_simulation(self, simulation):
+        processed = simulation / 255.0
+
+        # normalization
+        if self.normalizer is not None:
+            processed = self.normalizer(processed)
+
+        # transformation after normalization
+        if self.transform is not None:
+            processed = self.transform(processed)
+
+        # make it appropriate for minibatching
+        processed = processed.unsqueeze(0)
+        return processed
+
+    def get_frame_path(self, filepath, frame="first"):
+        raise NotImplementedError
+
+    def get_video_path(self, filepath):
+        raise NotImplementedError
+
+    def __len__(self):
+        raise NotImplementedError
+
+    def __getitem__(self, idx):
+        raise NotImplementedError
+
+
+class CRAFT(BaseDataset):
+    NUM_SECONDS = 10
+    HEIGHT = 256
+    WIDTH = 256
 
     def read_jsonfile(self):
         with open(osp.join(self.datadir, "dataset.json")) as f:
@@ -157,8 +230,6 @@ class IntuitivePhysicsDataset(data.Dataset):
 
     def build_cache(self):
         questions = self.questions
-        if self.num_examples is not None and self.num_examples > 0:
-            questions = [questions[i] for i in self.indices]
         items = {(q["video_index"], q["video_filename"])
                  for q in questions}
         items = [{"video_index": x[0], "video_filename": x[1]}
@@ -166,80 +237,28 @@ class IntuitivePhysicsDataset(data.Dataset):
         for item in tqdm(items):
             if item["video_index"] in self.cache.keys(): continue
             self.cache[item['video_index']] = self.read_simulation(item)
-
-    def adapt2model(self, model):
-        self.sim_input = model.SIMULATION_INPUT
-        try:
-            self.normalizer = model.frame_encoder.normalizer
-        except AttributeError:
-            pass
-        if self.cached: self.build_cache()
-
-    def read_simulation(self, item):
-        sim_input = str(self.sim_input).split(".")[1]
-        sim_func = eval("self.read_{}".format(sim_input.lower()))
-        return sim_func(item)
-
-    def read_frame(self, item, frame="first"):
-        path = item["video_filename"]
+        
+    def get_frame_path(self, path, frame="first"):
         path = path.replace("videos", frame + "_frames").replace("mpg", "png")
         path = osp.abspath(osp.join(self.datadir, "..", path))
-        image = cv2.imread(path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = torch.tensor(image).permute(2, 0, 1) / 255.0
-        return self.postprocess_simulation(image)
+        return path
 
-    def read_first_frame(self, item):
-        return self.read_frame(item)
-
-    def read_last_frame(self, item):
-        return self.read_frame(item, frame="last")
-
-    def read_first_and_last_frames(self, item):
-        first_frame = self.read_first_frame(item)
-        last_frame = self.read_last_frame(item)
-        return (first_frame, last_frame)
-
-    def read_video(self, item):
-        filename = item["video_filename"]
+    def get_video_path(self, path):
         if self.fps > 0:
-            filename = filename.replace("videos", f"downsampled/{self.fps}fps")
-            filename = filename.replace(".mpg", ".mp4")
-        video_path = osp.abspath(osp.join(self.datadir, "..", filename))
-        video = read_video(video_path, pts_unit="sec")[0]
-        video = rearrange_dimensions(video)
-        return self.postprocess_simulation(video / 255.)
-
-    def read_no_frames(self, item):
-        return (torch.zeros(1),)
-
-    def postprocess_simulation(self, simulation):
-        processed = simulation
-
-        # normalization
-        if self.normalizer is not None:
-            processed = self.normalizer(processed)
-
-        # transformation after normalization
-        if self.transform is not None:
-            processed = self.transform(processed)
-
-        # make it appropriate for minibatching
-        processed = processed.unsqueeze(0)
-        return processed
+            path = path.replace("videos", f"downsampled/{self.fps}fps")
+            path = path.replace(".mpg", ".mp4")
+        path = osp.abspath(osp.join(self.datadir, "..", path))
+        return path
 
     def __len__(self):
-        if self.num_examples is not None: return self.num_examples
         return len(self.questions)
 
     def __getitem__(self, idx):
-        if self.num_examples is not None and self.num_examples > 0:
-            idx = self.indices[idx]
         item = self.questions[idx]
-        if self.cached and item['video_index'] in self.cache.keys():
-            simulation = self.cache[item['video_index']]
+        if self.cached and item["video_index"] in self.cache.keys():
+            simulation = self.cache[item["video_index"]]
         elif not self.cached:
-            simulation = self.read_simulation(item)
+            simulation = self.read_simulation(item["video_filename"])
         else:
             print("read simulation op: split={}, video_index={}".format(
                 self.split, item["video_index"]))
@@ -257,6 +276,70 @@ class IntuitivePhysicsDataset(data.Dataset):
             "question_index": item["question_index"],
         }
         return item_dict
+
+class CLEVRER(BaseDataset):
+    NUM_SECONDS = 5
+    WIDTH = 480
+    HEIGHT = 320
+
+    def read_jsonfile(self):
+        path = osp.join(self.datadir, self.split + ".json")
+        with open(path) as f:
+            self.json_data = json.load(f)
+    
+    def build_vocabs(self):
+        vocab_file = osp.join(self.datadir, "vocab.pt")
+        if osp.isfile(vocab_file):
+            vocabs = torch.load(vocab_file)
+            self.question_vocab = vocabs["question_vocab"]
+            self.choice_vocab = vocabs["choice_vocab"]
+            self.answer_vocab = vocabs["answer_vocab"]
+            return
+        
+        with open(osp.join(self.datadir, "train.json")) as f:
+            json_data = json.load(f)
+        
+        questions, choices, answers = [], [], []
+        for simulation in json_data:
+            for question in simulation["questions"]:
+                questions.append(question["question"])
+                if "answer" in question.keys():
+                    answers.append(question["answer"])
+                    continue
+
+                for choice in question["choices"]:
+                    choices.append(choice["choice"])
+                    answers.append(choice["answer"])
+        
+        self.question_vocab = Vocab(questions)
+        self.choice_vocab = Vocab(choices)
+        self.answer_vocab = Vocab(answers)
+
+        torch.save({
+            "question_vocab": self.question_vocab,
+            "choice_vocab": self.choice_vocab,
+            "answer_vocab": self.answer_vocab,
+        }, vocab_file)
+
+    def build_split(self):
+        self.questions = []
+        for simulation in self.json_data:
+            base_dict = {
+                "video_filename": simulation["video_filename"],
+                "scene_index": simulation["scene_index"],
+            }
+            for question in simulation['questions']:
+                question_dict = {k:v for (k,v) in question.items() if k != "choices"}
+                if "answer" in question.keys():
+                    self.questions.append({**base_dict, **question_dict})
+                    continue
+                
+                for choice_dict in question["choices"]:
+                    self.questions.append({
+                        **base_dict,
+                        **question_dict,
+                        **choice_dict
+                    })
 
 
 def base_collate_fn(batch):

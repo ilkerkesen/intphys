@@ -5,11 +5,11 @@ output_size: null
 dropout: 0.0
 question_encoder:
   architecture: LSTMEncoder
-  hidden_size: 512
-  embed_size: 512
+  hidden_size: 256
+  embed_size: 256
   vocab_size: null
 frame_encoder:
-  num_channels: 64
+  num_channels: 32
   num_layers: 4
   input_size: 256
   kernel_size: 5
@@ -18,5 +18,5 @@ frame_encoder:
 mlp:
   activation: relu
   num_layers: 2
-  hidden_size: 512
+  hidden_size: 256
   input_size: null

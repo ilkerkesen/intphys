@@ -15,7 +15,7 @@ from omegaconf import OmegaConf
 
 from intphys import *
 from intphys.data import train_collate_fn as collate_fn
-from intphys.data import SimulationInput, IntuitivePhysicsDataset
+from intphys.data import *
 from intphys.experiment import Experiment, Overfit
 
 
@@ -28,7 +28,7 @@ def adapt2data(config, dataset):
     if config["model"].get("output_size") is None:
         config["model"]["output_size"] = len(dataset.answer_vocab)
     if config["model"].get("depth_size") is None:
-        config["model"]["depth_size"] = dataset.fps * dataset.num_seconds
+        config["model"]["depth_size"] = dataset.fps * dataset.NUM_SECONDS
     return config
 
 
@@ -39,8 +39,9 @@ def train(config):
     pl.seed_everything(config["seed"])
 
     # load data
-    train_data = IntuitivePhysicsDataset(split="train", **config["dataset"])
-    val_data = IntuitivePhysicsDataset(split="validation", **config["dataset"])
+    dataset_class = eval(config["dataset"]["name"])
+    train_data = dataset_class(split="train", **config["dataset"]["params"])
+    val_data = dataset_class(split="validation", **config["dataset"]["params"])
 
     # logger
     config["logger"]["save_dir"] = osp.abspath(
