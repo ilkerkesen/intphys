@@ -30,7 +30,7 @@ class LSTMBaseline(nn.Module):
         self.dropout = nn.Dropout(p=config["dropout"])
         self.config = config
 
-    def forward(self, simulations, questions, **kwargs):
+    def forward(self, simulations, questions, choices, **kwargs):
         _, (hiddens, _) = self.question_encoder(questions)
         answers = self.linear(self.dropout(hiddens.squeeze(0)))
         return answers
@@ -49,7 +49,7 @@ class LSTMCNNBaseline(nn.Module):
         self.question_encoder = self.create_submodule("question_encoder")
         visual_size = self.NUM_VIDEO_FRAMES * self.frame_encoder.out_features
         textual_size = self.question_encoder.config["hidden_size"]
-        config["mlp"]["input_size"] = visual_size + textual_size
+        config["mlp"]["input_size"] = visual_size + 2*textual_size
         self.flatten = nn.Flatten()
         self.mlp = MLP(config["mlp"])
         self.linear = nn.Linear(
@@ -72,7 +72,7 @@ class LSTMCNNBaseline(nn.Module):
         _, (hiddens, _) = self.question_encoder(questions)
         return hiddens.squeeze(0)
 
-    def forward(self, simulations, questions, **kwargs):
+    def forward(self, simulations, questions, choices, **kwargs):
         vis = self.process_simulation(simulations, **kwargs)
         txt = self.process_question(questions, **kwargs)
         y = torch.cat([self.dropout(vis), self.dropout(txt)], dim=1)
