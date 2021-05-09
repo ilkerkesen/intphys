@@ -271,7 +271,6 @@ class CRAFT(BaseDataset):
             "simulation": simulation,
             "question": torch.tensor(question),
             "answer": torch.tensor(answer),
-            "choice": torch.tensor(self.choice_vocab["HEDE"]),
             "template": osp.splitext(item["template_filename"])[0],
             "video": item["video"],
             "video_index": item["video_index"],
@@ -295,14 +294,13 @@ class CLEVRER(BaseDataset):
         if osp.isfile(vocab_file):
             vocabs = torch.load(vocab_file)
             self.question_vocab = vocabs["question_vocab"]
-            self.choice_vocab = vocabs["choice_vocab"]
             self.answer_vocab = vocabs["answer_vocab"]
             return
         
         with open(osp.join(self.datadir, "train.json")) as f:
             json_data = json.load(f)
         
-        questions, choices, answers = [], [], []
+        questions, answers = [], [], []
         for simulation in json_data:
             for question in simulation["questions"]:
                 questions.append(question["question"])
@@ -314,13 +312,13 @@ class CLEVRER(BaseDataset):
                     choices.append(choice["choice"])
                     answers.append(choice["answer"])
         
-        self.question_vocab = Vocab(questions)
-        self.choice_vocab = Vocab(choices)
+        # self.question_vocab = Vocab(questions)
+        # self.choice_vocab = Vocab(choices)
+        self.question_vocab = Vocab(questions+choices)
         self.answer_vocab = Vocab(answers)
 
         torch.save({
             "question_vocab": self.question_vocab,
-            "choice_vocab": self.choice_vocab,
             "answer_vocab": self.answer_vocab,
         }, vocab_file)
 
@@ -346,6 +344,7 @@ class CLEVRER(BaseDataset):
 
     def get_video_fullpath(self, path):
         idx = int(re.match(r"video_(\d+)\.mp4", path).group(1))
+        idx = (idx // 1000) * 1000
         path = osp.join(f"videos/video_{idx:05d}-{idx+1000:05d}", path)
         return osp.join(self.datadir, path)
 
@@ -361,11 +360,12 @@ class CLEVRER(BaseDataset):
         return len(self.questions)
 
     def __getitem__(self, idx):
+        # FIXME: remove following line
         self.sim_input = SimulationInput.LAST_FRAME
-        import ipdb; ipdb.set_trace()
         item = self.questions[idx]
-        question = self.question_vocab[item["question"]]
-        choice = self.choice_vocab[item.get("choice", "UNKNOWN")]
+        merged = item["question"] + " " + item.get("choice", "")
+        question = self.question_vocab[merged]
+        # choice = self.choice_vocab[item.get("choice", "UNKNOWN")]
         answer = self.answer_vocab[item["answer"]]
         video_path = self.get_video_fullpath(item["video_filename"])
         simulation = self.read_simulation(video_path)
@@ -373,10 +373,9 @@ class CLEVRER(BaseDataset):
 
         item_dict = {
             "simulation": simulation,
-            "question": question,
+            "question": torch.tensor(question),
             "template": item["question_type"],
-            "choice": choice,
-            "answer": answer,
+            "answer": torch.tensor(answer),
             "video_index": item["scene_index"],
             "question_index": item["question_id"],
         }
@@ -397,7 +396,8 @@ def base_collate_fn(batch):
     questions = make_sentence_batch([x["question"] for x in batch])
 
     # choices batching
-    choices = make_sentence_batch([x["choice"] for x in batch])
+    # choices = make_sentence_batch([x["choice"] for x in batch])
+    choices = None
 
     # answer batching
     answers = torch.cat([instance["answer"] for instance in batch])
@@ -407,17 +407,18 @@ def base_collate_fn(batch):
     helper = lambda i: torch.cat([x["simulation"][i] for x in batch], dim=0)
     simulations = torch.cat([helper(i) for i in range(num_simulations)], dim=0)
 
-    return (simulations, questions, choices, answers)
+    return (simulations, questions, answers)
 
 
 def train_collate_fn(unsorted_batch):
     unsorted_batch = [x for x in unsorted_batch if x is not None]
     batch = sorted(unsorted_batch,
-                   key=lambda x: len(x["question"], x["choice"]),
+                   # key=lambda x: len(x["question"], x["choice"]),
+                   key=lambda x: len(x["question"]),
                    reverse=True)
-    simulations, questions, choices, answers = base_collate_fn(batch)
+    simulations, questions, answers = base_collate_fn(batch)
     additional = {"kwargs": {}}
-    inputs, outputs = (simulations, questions, choices, additional), (answers,)
+    inputs, outputs = (simulations, questions, additional), (answers,)
     return (inputs, outputs)
 
 
@@ -426,11 +427,11 @@ def inference_collate_fn(unsorted_batch):
     batch = sorted(unsorted_batch,
                    key=lambda x: len(x["question"]),
                    reverse=True)
-    simulations, questions, choices, answers = base_collate_fn(batch)
+    simulations, questions, answers = base_collate_fn(batch)
     additional = {
         "video_indexes": [x["video_index"] for x in batch],
         "question_indexes": [x["question_index"] for x in batch],
         "kwargs": {},
     }
-    inputs, outputs = (simulations, questions, choices, additional), (answers,)
+    inputs, outputs = (simulations, questions, additional), (answers,)
     return (inputs, outputs)

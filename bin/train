@@ -29,6 +29,10 @@ def adapt2data(config, dataset):
         config["model"]["output_size"] = len(dataset.answer_vocab)
     if config["model"].get("depth_size") is None:
         config["model"]["depth_size"] = dataset.fps * dataset.NUM_SECONDS
+    if config["model"].get("input_width") is None:
+        config["model"]["input_width"] = dataset.WIDTH
+    if config["model"].get("input_height") is None:
+        config["model"]["input_height"] = dataset.HEIGHT
     return config
 
 
@@ -47,7 +51,9 @@ def train(config):
     config["logger"]["save_dir"] = osp.abspath(
         osp.expanduser(config["logger"]["save_dir"]))
     if config["logger"]["name"] is None:
-        config["logger"]["name"] = config["model"]["architecture"]
+        model_name = config["model"]["architecture"]
+        dataset_name = config["dataset"]["name"]
+        config["logger"]["name"] = f"{model_name}-{dataset_name}"
     logger = pl.loggers.TensorBoardLogger(**config["logger"])
 
     # checkpoint
