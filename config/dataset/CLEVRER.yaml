@@ -1,0 +1,6 @@
+# @package _group_
+name: CLEVRER
+params:
+  path: ~/data/clevrer
+  fps: 0
+  cached: false

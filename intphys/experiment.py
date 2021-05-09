@@ -27,7 +27,7 @@ class Overfit(pl.LightningModule):
         self._generate_flag = False
 
     def forward(self, simulation, question, **kwargs):
-        return self.model(simulation ,question, **kwargs)
+        return self.model(simulation, question, **kwargs)
 
     def training_step(self, batch, batch_index):
         (simulations, questions, additional), (answers,) = batch

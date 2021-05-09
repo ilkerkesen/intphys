@@ -1,7 +1,10 @@
-# hydra related
-hydra:
-  run:
-    dir: .
+# defaults
+defaults:
+  - model: Baseline
+  - dataset: CRAFT
+  - optimizer: Adam
+  - scheduler: ReduceLROnPlateau
+  - hydra/job_logging: disabled
 
 # experiment
 seed: 1
@@ -22,13 +25,6 @@ loader:
   pin_memory: false
   num_workers: 16
 
-# dataset
-dataset:
-  path: ~/data/intphys/Dataset_3000_230920
-  fps: 1
-  cached: false
-  num_examples: null
-
 # logger (tensorboard)
 logger:
   name: null
@@ -48,9 +44,6 @@ checkpoint:
 # resume training
 checkpoint_path: null
 
-# defaults
-defaults:
-  - model: Baseline
-  - optimizer: Adam
-  - scheduler: ReduceLROnPlateau
-  - hydra/job_logging: disabled
+hydra:
+  run:
+    dir: .

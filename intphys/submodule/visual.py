@@ -19,12 +19,12 @@ class CNN2Dv1(nn.Module):
 
     def setup_layers(self):
         self.layers = nn.Sequential()
-        size = self.config["input_size"]
+        w, h = self.config["input_width"], self.config["input_height"]
         for idx in range(self.config["num_layers"]):
-            size = self.calculate_output_size(size)
+            w, h = [self.calculate_output_size(x) for x in (w, h)]
             self.add_layer(idx=idx)
         num_channels = (2**idx) * self.config["num_channels"]
-        self.out_features = size**2 * num_channels
+        self.out_features = w * h * num_channels
 
     def add_layer(self, idx):
         out_channels = (2**idx) * self.config["num_channels"]
@@ -58,6 +58,7 @@ def resnet18(config):
         net.normalizer = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         for par in net.parameters():
             par.requires_grad = False
+    # FIXME: input_size => input_width, input_height
     out_size = config["input_size"] // 4 // 2**(config["num_layers"]-2)
     out_channels = 2**(5+config["num_layers"]-1)
     net.out_features = out_channels * out_size * out_size

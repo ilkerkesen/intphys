@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import torch
 import torch.nn as nn
 
@@ -42,9 +44,14 @@ class LSTMCNNBaseline(nn.Module):
 
     def __init__(self, config):
         super().__init__()
+
+        # input dependent params
         config["question_encoder"]["vocab_size"] = config["input_size"]
         config["frame_encoder"]["depth_size"] = config["depth_size"]
+        config["frame_encoder"]["input_width"] = config["input_width"]
+        config["frame_encoder"]["input_height"] = config["input_height"]
         self.config = config
+
         self.frame_encoder = self.create_submodule("frame_encoder")
         self.question_encoder = self.create_submodule("question_encoder")
         visual_size = self.NUM_VIDEO_FRAMES * self.frame_encoder.out_features
