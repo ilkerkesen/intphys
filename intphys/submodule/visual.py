@@ -25,6 +25,7 @@ class CNN2Dv1(nn.Module):
             self.add_layer(idx=idx)
         num_channels = (2**idx) * self.config["num_channels"]
         self.out_features = w * h * num_channels
+        self.out_channels = num_channels
 
     def add_layer(self, idx):
         out_channels = (2**idx) * self.config["num_channels"]
@@ -62,5 +63,6 @@ def resnet18(config):
     out_size = config["input_size"] // 4 // 2**(config["num_layers"]-2)
     out_channels = 2**(5+config["num_layers"]-1)
     net.out_features = out_channels * out_size * out_size
+    net.out_channels = out_channels
     net.config = config
     return net

@@ -10,15 +10,14 @@ from copy import deepcopy
 import torch
 import torch.utils.data as data
 from torchvision.io import read_video, read_video_timestamps
-from torchvision.transforms import Lambda, ToTensor, Normalize
 import numpy as np
 import cv2
 from tqdm import tqdm
+from torchtext.data import get_tokenizer
 
 
 UNK = "<UNK>"
 PAD = "<PAD>"
-PUNCTUATION_REGEX = re.compile(r"([a-zA-Z0-9]+)(\W)")
 
 
 __all__ = (
@@ -28,10 +27,6 @@ __all__ = (
     'train_collate_fn',
     'inference_collate_fn',
 )
-
-
-def tokenize_sentence(sentence):
-    return PUNCTUATION_REGEX.sub(r"\g<1> \g<2>", sentence.lower()).split()
 
 
 def rearrange_dimensions(frames):
@@ -63,13 +58,14 @@ class SimulationInput(IntEnum):
 class Vocab(object):
     def __init__(self, instances, min_occur=0):
         self.min_occur = min_occur
+        self.tokenizer = get_tokenizer("basic_english")
         self.build_count_dict(instances)
         self.build_dicts()
 
     def build_count_dict(self, instances):
         count_dict = dict()
         for instance in instances:
-            tokens = tokenize_sentence(str(instance))
+            tokens = self.tokenizer(str(instance))
             for token in tokens:
                 count_dict[token] = count_dict.get(token, 0) + 1
         self.count_dict = count_dict
@@ -92,7 +88,7 @@ class Vocab(object):
     def __getitem__(self, x):
         x = (x,) if isinstance(x, int) else x
         x = x.tolist() if isinstance(x, torch.Tensor) else x
-        x = tokenize_sentence(x) if isinstance(x, str) else x
+        x = self.tokenizer(x) if isinstance(x, str) else x
 
         if all(isinstance(xi, str) for xi in x):
             x2i = self.w2i
@@ -112,15 +108,16 @@ class BaseDataset(data.Dataset):
     HEIGHT = 0
     WIDTH = 0
 
-    def __init__(self, path, split="train", fps=0, cached=False):
+    def __init__(self, path, split="train", fps=0, cached=False, transform=None, split_info="random", *args, **kwargs):
         super().__init__()
         self.datadir = osp.abspath(osp.expanduser(path))
         self.split = split
+        self.split_info = split_info
         self.fps = fps
         self.normalizer = None
         self.sim_input = None
         self.cached = cached
-        self.transform = None
+        self.transform = transform
 
         self.read_jsonfile()
         self.build_vocabs()
@@ -165,7 +162,7 @@ class BaseDataset(data.Dataset):
         return (first_frame, last_frame)
 
     def read_video(self, path):
-        # filename = item["video_filename"]
+        # filename = item["video_file_path"]
         video = read_video(self.get_video_path(path), pts_unit="sec")[0]
         video = rearrange_dimensions(video)
         return self.postprocess_simulation(video)
@@ -181,7 +178,11 @@ class BaseDataset(data.Dataset):
             processed = self.normalizer(processed)
 
         # transformation after normalization
-        if self.transform is not None:
+        if self.transform is not None and processed.dim() == 4:
+            frames = [processed[:, i] for i in range(processed.shape[1])]
+            frames = [self.transform(frame).unsqueeze(1) for frame in frames]
+            processed = torch.cat(frames, dim=1)
+        elif self.transform is not None and processed.dim() != 3:
             processed = self.transform(processed)
 
         # make it appropriate for minibatching
@@ -207,33 +208,35 @@ class CRAFT(BaseDataset):
     WIDTH = 256
 
     def read_jsonfile(self):
-        with open(osp.join(self.datadir, "dataset.json")) as f:
+        with open(osp.join(self.datadir, "dataset_minimal.json")) as f:
             self.json_data = json.load(f)
 
     def build_vocabs(self):
-        simulations = filter(lambda x: x["split"] == "train", self.json_data)
-        questions = []
-        for sim in simulations:
-            questions.extend(sim["questions"]["questions"])
-        self.question_vocab = Vocab([x['question'] for x in questions])
-        self.answer_vocab = Vocab([x['answer'] for x in questions])
+        self.question_vocab = Vocab([x['question'] for x in self.json_data])
+        self.answer_vocab = Vocab([x['answer'] for x in self.json_data])
         self.choice_vocab = Vocab([])
 
-    def build_split(self):
-        self.questions = []
+    def build_split(self, ):
+        filepath = osp.join(self.datadir, f"split_info_{self.split_info}.json")
+        with open(filepath) as f:
+            split_data = json.load(f)
+        split_dict = {}
+        for (split, instances) in split_data.items():
+            for x in instances:
+                split_dict[x["video_index"], x['question_index']] = split
+        for x in self.json_data:
+            x["split"] = split_dict[x["video_index"], x["question_index"]]
+
+        questions = deepcopy(self.json_data)
         if self.split != "all":
-            simulations = filter(
-                lambda x: x["split"] == self.split, self.json_data)
-        else:
-            simulations = self.json_data
-        for sim in simulations:
-            self.questions.extend(sim["questions"]["questions"])
+            questions = [x for x in self.json_data if x["split"] == self.split]
+        self.questions = questions
 
     def build_cache(self):
         questions = self.questions
-        items = {(q["video_index"], q["video_filename"])
+        items = {(q["video_index"], q["video_file_path"])
                  for q in questions}
-        items = [{"video_index": x[0], "video_filename": x[1]}
+        items = [{"video_index": x[0], "video_file_path": x[1]}
                  for x in items]
         for item in tqdm(items):
             if item["video_index"] in self.cache.keys(): continue
@@ -241,14 +244,14 @@ class CRAFT(BaseDataset):
         
     def get_frame_path(self, path, frame="first"):
         path = path.replace("videos", frame + "_frames").replace("mpg", "png")
-        path = osp.abspath(osp.join(self.datadir, "..", path))
+        path = osp.abspath(osp.join(self.datadir, path))
         return path
 
     def get_video_path(self, path):
         if self.fps > 0:
-            path = path.replace("videos", f"downsampled/{self.fps}fps")
+            path = path.replace("videos", f"downsampled/{self.fps}-fps")
             path = path.replace(".mpg", ".mp4")
-        path = osp.abspath(osp.join(self.datadir, "..", path))
+        path = osp.abspath(osp.join(self.datadir, path))
         return path
 
     def __len__(self):
@@ -259,20 +262,20 @@ class CRAFT(BaseDataset):
         if self.cached and item["video_index"] in self.cache.keys():
             simulation = self.cache[item["video_index"]]
         elif not self.cached:
-            simulation = self.read_simulation(item["video_filename"])
+            simulation = self.read_simulation(item["video_file_path"])
         else:
             print("read simulation op: split={}, video_index={}".format(
                 self.split, item["video_index"]))
         if isinstance(simulation, torch.Tensor):
             simulation = (simulation,)
         question = self.question_vocab[item["question"]]
-        answer = self.answer_vocab[tokenize_sentence(str(item["answer"]))]
+        answer = self.answer_vocab[self.answer_vocab.tokenizer(str(item["answer"]))]
         item_dict = {
             "simulation": simulation,
             "question": torch.tensor(question),
             "answer": torch.tensor(answer),
-            "template": osp.splitext(item["template_filename"])[0],
-            "video": item["video"],
+            "answer_type": item["answer_type"].lower(),
+            "template": item["question_type"].lower(),
             "video_index": item["video_index"],
             "question_index": item["question_index"],
         }
@@ -300,7 +303,7 @@ class CLEVRER(BaseDataset):
         with open(osp.join(self.datadir, "train.json")) as f:
             json_data = json.load(f)
         
-        questions, answers = [], [], []
+        questions, choices, answers = [], [], []
         for simulation in json_data:
             for question in simulation["questions"]:
                 questions.append(question["question"])
@@ -312,9 +315,7 @@ class CLEVRER(BaseDataset):
                     choices.append(choice["choice"])
                     answers.append(choice["answer"])
         
-        # self.question_vocab = Vocab(questions)
-        # self.choice_vocab = Vocab(choices)
-        self.question_vocab = Vocab(questions+choices)
+        self.question_vocab = Vocab(questions + choices)
         self.answer_vocab = Vocab(answers)
 
         torch.save({
@@ -326,7 +327,7 @@ class CLEVRER(BaseDataset):
         self.questions = []
         for simulation in self.json_data:
             base_dict = {
-                "video_filename": simulation["video_filename"],
+                "video_file_path": simulation["video_file_path"],
                 "scene_index": simulation["scene_index"],
             }
             for question in simulation['questions']:
@@ -360,14 +361,11 @@ class CLEVRER(BaseDataset):
         return len(self.questions)
 
     def __getitem__(self, idx):
-        # FIXME: remove following line
-        self.sim_input = SimulationInput.LAST_FRAME
         item = self.questions[idx]
         merged = item["question"] + " " + item.get("choice", "")
         question = self.question_vocab[merged]
-        # choice = self.choice_vocab[item.get("choice", "UNKNOWN")]
         answer = self.answer_vocab[item["answer"]]
-        video_path = self.get_video_fullpath(item["video_filename"])
+        video_path = self.get_video_fullpath(item["video_file_path"])
         simulation = self.read_simulation(video_path)
         if isinstance(simulation, torch.Tensor): simulation = (simulation, )
 

@@ -17,5 +17,7 @@ def r3d_18(config):
     for i in range(config["num_layers"]-2):
         out_depth = (out_depth+1) // 2
     net.out_features = out_depth * out_channels * out_size * out_size
+    net.out_depth = out_depth
+    net.out_channels = out_channels
     net.config = config
     return net
