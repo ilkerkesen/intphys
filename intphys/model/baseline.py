@@ -32,8 +32,8 @@ class LSTMBaseline(nn.Module):
         self.dropout = nn.Dropout(p=config["dropout"])
         self.config = config
 
-    def forward(self, simulations, questions, **kwargs):
-        _, (hiddens, _) = self.question_encoder(questions)
+    def forward(self, simulations, questions, lengths, **kwargs):
+        _, (hiddens, _) = self.question_encoder(questions, lengths)
         answers = self.linear(self.dropout(hiddens.squeeze(0)))
         return answers
 
@@ -84,13 +84,13 @@ class LSTMCNNBaseline(nn.Module):
         y = self.flatten(y)
         return y
 
-    def process_question(self, questions, **kwargs):
-        _, (hiddens, _) = self.question_encoder(questions)
+    def process_question(self, questions, lengths, **kwargs):
+        _, (hiddens, _) = self.question_encoder(questions, lengths)
         return hiddens.squeeze(0)
 
-    def forward(self, simulations, questions, **kwargs):
+    def forward(self, simulations, questions, lengths, **kwargs):
         vis = self.process_simulation(simulations, **kwargs)
-        txt = self.process_question(questions, **kwargs)
+        txt = self.process_question(questions, lengths, **kwargs)
         y = torch.cat([self.dropout(vis), self.dropout(txt)], dim=1)
         y = self.mlp(y)
         return self.linear(y)

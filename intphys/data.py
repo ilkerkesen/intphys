@@ -273,6 +273,7 @@ class CRAFT(BaseDataset):
         item_dict = {
             "simulation": simulation,
             "question": torch.tensor(question),
+            "question_length": len(question),
             "answer": torch.tensor(answer),
             "answer_type": item["answer_type"].lower(),
             "template": item["question_type"].lower(),
@@ -383,10 +384,10 @@ class CLEVRER(BaseDataset):
 
 def make_sentence_batch(batch, batch_first=True):
     batchsize, longest = len(batch), len(batch[0])
-    sentences = torch.zeros((longest, batchsize), dtype=torch.long)
+    sentences = torch.zeros((batchsize, longest), dtype=torch.long)
     for (i, sentence) in enumerate(batch):
-        sentences[-len(sentence):, i] = sentence
-    if batch_first:
+        sentences[i, -len(sentence):] = sentence
+    if not batch_first:
         sentences = sentences.transpose(0, 1)
     return sentences
 
@@ -394,10 +395,7 @@ def make_sentence_batch(batch, batch_first=True):
 def base_collate_fn(batch):
     # question batching
     questions = make_sentence_batch([x["question"] for x in batch])
-
-    # choices batching
-    # choices = make_sentence_batch([x["choice"] for x in batch])
-    choices = None
+    lengths = [x["question_length"] for x in batch]
 
     # answer batching
     answers = torch.cat([instance["answer"] for instance in batch])
@@ -407,7 +405,7 @@ def base_collate_fn(batch):
     helper = lambda i: torch.cat([x["simulation"][i] for x in batch], dim=0)
     simulations = torch.cat([helper(i) for i in range(num_simulations)], dim=0)
 
-    return (simulations, questions, answers)
+    return (simulations, questions, lengths, answers)
 
 
 def train_collate_fn(unsorted_batch):
@@ -416,9 +414,9 @@ def train_collate_fn(unsorted_batch):
                    # key=lambda x: len(x["question"], x["choice"]),
                    key=lambda x: len(x["question"]),
                    reverse=True)
-    simulations, questions, answers = base_collate_fn(batch)
+    simulations, questions, lengths, answers = base_collate_fn(batch)
     additional = {"kwargs": {}}
-    inputs, outputs = (simulations, questions, additional), (answers,)
+    inputs, outputs = (simulations, questions, lengths, additional), (answers,)
     return (inputs, outputs)
 
 
@@ -427,11 +425,11 @@ def inference_collate_fn(unsorted_batch):
     batch = sorted(unsorted_batch,
                    key=lambda x: len(x["question"]),
                    reverse=True)
-    simulations, questions, answers = base_collate_fn(batch)
+    simulations, questions, lengths, answers = base_collate_fn(batch)
     additional = {
         "video_indexes": [x["video_index"] for x in batch],
         "question_indexes": [x["question_index"] for x in batch],
         "kwargs": {},
     }
-    inputs, outputs = (simulations, questions, additional), (answers,)
+    inputs, outputs = (simulations, questions, lengths, additional), (answers,)
     return (inputs, outputs)

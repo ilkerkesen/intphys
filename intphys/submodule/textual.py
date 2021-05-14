@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 
 class LSTMEncoder(nn.Module):
@@ -13,5 +14,6 @@ class LSTMEncoder(nn.Module):
             batch_first=True)
         self.config = config
 
-    def forward(self, x):
-        return self.lstm(self.embedding(x))
+    def forward(self, x, x_l):
+        embed = pack_padded_sequence(self.embedding(x), x_l, batch_first=True) 
+        return self.lstm(embed)
