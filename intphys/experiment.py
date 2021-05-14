@@ -12,12 +12,11 @@ from .model import *
 
 
 __all__ = (
-    'Overfit',
     'Experiment',
 )
 
 
-class Overfit(pl.LightningModule):
+class Experiment(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -64,8 +63,6 @@ class Overfit(pl.LightningModule):
         }]
         return optimizers, schedulers    
 
-
-class Experiment(Overfit):
     def validation_step(self, batch, batch_index):
         return self.batch_accuracy(batch, batch_index)
 

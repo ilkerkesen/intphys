@@ -18,16 +18,22 @@ import cv2
 
 
 def read_first_frame(filepath):
-    timestamp = read_video_timestamps(filepath, pts_unit="sec")[0][0]
+    timestamp = read_video_timestamps(filepath, pts_unit="sec")[0]
     frame = read_video(
-        filepath, pts_unit="sec", start_pts=timestamp, end_pts=timestamp)[0]
+        filepath,
+        pts_unit="sec",
+        start_pts=timestamp[0],
+        end_pts=timestamp[1])[0][0]
     return cv2.cvtColor(frame.squeeze(0).numpy(), cv2.COLOR_RGB2BGR)
 
 
 def read_last_frame(filepath):
-    timestamp = read_video_timestamps(filepath, pts_unit="sec")[0][-1]
+    timestamp = read_video_timestamps(filepath, pts_unit="sec")[0]
     frame = read_video(
-        filepath, pts_unit="sec", start_pts=timestamp, end_pts=timestamp)[0]
+        filepath,
+        pts_unit="sec",
+        start_pts=timestamp[-2],
+        end_pts=timestamp[-1])[0][-1]
     return cv2.cvtColor(frame.squeeze(0).numpy(), cv2.COLOR_RGB2BGR)
 
 
@@ -57,7 +63,7 @@ def extract_frames(filepath):
 
 
 @click.command()
-@click.option("--datadir", default="~/data/intphys/Dataset_3000_230920")
+@click.option("--datadir", default="/userfiles/ikesen16/data/craft")
 @click.option("--workers", default=0)
 def main(datadir, workers):
     datadir = osp.abspath(osp.expanduser(datadir))

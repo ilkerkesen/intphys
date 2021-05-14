@@ -8,16 +8,15 @@ defaults:
 
 # experiment
 seed: 1
-train: true
+image_size: 112
 resume: true
-overfit: false
-test: true
 trainer:
   gpus: 1
   max_epochs: 30
   gradient_clip_val: 1.0
   val_check_interval: 1.00
   resume_from_checkpoint: null
+  precision: 16
 
 # data loader
 loader:
@@ -38,8 +37,6 @@ checkpoint:
   verbose: true
   monitor: "val_accuracy"
   mode: "max"
-  prefix: ""
-  filepath: null
 
 # resume training
 checkpoint_path: null

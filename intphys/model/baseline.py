@@ -54,7 +54,15 @@ class LSTMCNNBaseline(nn.Module):
 
         self.frame_encoder = self.create_submodule("frame_encoder")
         self.question_encoder = self.create_submodule("question_encoder")
-        visual_size = self.NUM_VIDEO_FRAMES * self.frame_encoder.out_features
+        if self.SIMULATION_INPUT is not SimulationInput.VIDEO:
+            self.adaptive_pool = nn.AdaptiveAvgPool2d(config["pool_size"])
+        else:
+            self.adaptive_pool = nn.AdaptiveAvgPool3d(
+                (None, config["pool_size"], config["pool_size"])
+            )
+        visual_size = self.NUM_VIDEO_FRAMES * self.frame_encoder.out_channels * config["pool_size"]**2 
+        if self.SIMULATION_INPUT is SimulationInput.VIDEO:
+            visual_size *= self.frame_encoder.out_depth
         textual_size = self.question_encoder.config["hidden_size"]
         config["mlp"]["input_size"] = visual_size + textual_size
         self.flatten = nn.Flatten()
@@ -72,6 +80,7 @@ class LSTMCNNBaseline(nn.Module):
 
     def process_simulation(self, simulations, **kwargs):
         y = self.frame_encoder(simulations)
+        y = self.adaptive_pool(y)
         y = self.flatten(y)
         return y
 
@@ -110,10 +119,10 @@ class LSTMCNNBaseline2F(LSTMCNNBaseline):
         batch_size = simulations.size(0) // 2
         
         first_frames = self.first_frame_encoder(simulations[:batch_size])
-        first_frames = self.flatten(first_frames)
+        first_frames = self.flatten(self.adaptive_pool(first_frames))
         
         last_frames = self.last_frame_encoder(simulations[batch_size:])
-        last_frames = self.flatten(last_frames)
+        last_frames = self.flatten(self.adaptive_pool(last_frames))
 
         y = torch.cat([first_frames, last_frames], dim=1)
         return y
