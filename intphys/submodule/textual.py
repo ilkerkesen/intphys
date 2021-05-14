@@ -7,7 +7,10 @@ class LSTMEncoder(nn.Module):
         super().__init__()
         self.embedding = nn.Embedding(
             config["vocab_size"], config["embed_size"], padding_idx=0)
-        self.lstm = nn.LSTM(config["embed_size"], config["hidden_size"])
+        self.lstm = nn.LSTM(
+            config["embed_size"],
+            config["hidden_size"],
+            batch_first=True)
         self.config = config
 
     def forward(self, x):

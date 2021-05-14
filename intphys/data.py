@@ -381,11 +381,13 @@ class CLEVRER(BaseDataset):
         return item_dict
 
 
-def make_sentence_batch(batch):
+def make_sentence_batch(batch, batch_first=True):
     batchsize, longest = len(batch), len(batch[0])
     sentences = torch.zeros((longest, batchsize), dtype=torch.long)
     for (i, sentence) in enumerate(batch):
         sentences[-len(sentence):, i] = sentence
+    if batch_first:
+        sentences = sentences.transpose(0, 1)
     return sentences
 
 
