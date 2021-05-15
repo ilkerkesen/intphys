@@ -2,5 +2,6 @@
 name: CRAFT
 params:
   path: /userfiles/ikesen16/data/craft
+  split_info: "random"
   fps: 1
   cached: false

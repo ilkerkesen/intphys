@@ -20,15 +20,15 @@ trainer:
 
 # data loader
 loader:
-  batch_size: 16
+  batch_size: 64
   pin_memory: false
-  num_workers: 16
+  num_workers: 5
 
 # logger (tensorboard)
 logger:
   name: null
   version: null
-  save_dir: ~/logs/intphys/debug
+  save_dir: ~/logs/intphys/emnlp
 
 # checkpoint
 checkpoint:

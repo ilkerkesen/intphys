@@ -53,7 +53,8 @@ def train(config):
     if config["logger"]["name"] is None:
         model_name = config["model"]["architecture"]
         dataset_name = config["dataset"]["name"]
-        config["logger"]["name"] = f"{model_name}-{dataset_name}"
+        split_config = config["dataset"]["params"].get("split_info", "random")
+        config["logger"]["name"] = f"{model_name}-{dataset_name}-{split_config}"
     logger = pl.loggers.TensorBoardLogger(**config["logger"])
 
     # checkpoint
