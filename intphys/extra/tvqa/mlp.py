@@ -5,7 +5,7 @@ import torch.nn as nn
 
 
 class MLP(nn.Module):
-    def __init__(self, in_dim, out_dim, hsz, n_layers):
+    def __init__(self, in_dim, out_dim, hsz, n_layers, pdrop):
         super(MLP, self).__init__()
 
         layers = []
@@ -17,7 +17,7 @@ class MLP(nn.Module):
                 layers.extend([
                     nn.Linear(prev_dim, hsz),
                     nn.ReLU(True),
-                    nn.Dropout(0.5)
+                    nn.Dropout(pdrop)
                 ])
                 prev_dim = hsz
 

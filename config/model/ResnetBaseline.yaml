@@ -9,8 +9,9 @@ question_encoder:
   hidden_size: 256
   embed_size: 256
   vocab_size: null
+  bidirectional: true
 frame_encoder:
-  architecture: resnet101
+  architecture: resnet18
   input_size: 256
   pretrained: true
   freeze: false

@@ -85,6 +85,9 @@ def train(config):
     # create data loaders
     dm.train_data.adapt2model(experiment.model)
     dm.val_data.adapt2model(experiment.model)
+    if config["dataset"]["params"]["cached"]:
+        dm.train_data.build_cache()
+        dm.val_data.build_cache()
 
     # create trainer object
     trainer = pl.Trainer(

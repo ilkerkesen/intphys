@@ -233,6 +233,7 @@ class CRAFT(BaseDataset):
         self.questions = questions
 
     def build_cache(self):
+        self.cache = dict()
         questions = self.questions
         items = {(q["video_index"], q["video_file_path"])
                  for q in questions}
@@ -240,7 +241,7 @@ class CRAFT(BaseDataset):
                  for x in items]
         for item in tqdm(items):
             if item["video_index"] in self.cache.keys(): continue
-            self.cache[item['video_index']] = self.read_simulation(item)
+            self.cache[item['video_index']] = self.read_simulation(item["video_file_path"])
         
     def get_frame_path(self, path, frame="first"):
         path = path.replace("videos", frame + "_frames").replace("mpg", "png")
@@ -395,7 +396,7 @@ def make_sentence_batch(batch, batch_first=True):
 def base_collate_fn(batch):
     # question batching
     questions = make_sentence_batch([x["question"] for x in batch])
-    lengths = [x["question_length"] for x in batch]
+    lengths = torch.tensor([x["question_length"] for x in batch])
 
     # answer batching
     answers = torch.cat([instance["answer"] for instance in batch])

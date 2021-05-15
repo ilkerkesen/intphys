@@ -11,27 +11,41 @@ from intphys.extra.tvqa.mlp import MLP
 class ABC(nn.Module):
     def __init__(self, config):
         super(ABC, self).__init__()
-        hidden_size_1 = config["hidden_size_1"] # 150
-        hidden_size_2 = config["hidden_size_2"] # 300
-        n_layers_cls =config["n_layers_cls"] # 1
-        vid_feat_size = config["vid_feat_size"] # 2048
-        embedding_size = config["embed_size"] # 300
-        vocab_size = config["input_size"]
+        lstm_hidden_size_1 = config["lstm_hidden_size_1"] # 256
+        lstm_hidden_size_2 = config["lstm_hidden_size_2"] # 256
+        mlp_hidden_size = config["mlp_hidden_size"] # 256
+        mlp_num_layers = config["mlp_num_layers"]
+        vid_feat_size = config.get("vid_feat_size", 2048) # 2048
+        embed_size = config["embed_size"] # 300
+        vocab_size = config["vocab_size"]
         num_classes = config["output_size"]
+        pdrop = config["dropout"]
 
-        self.embedding = nn.Embedding(vocab_size, embedding_size)
-        self.bidaf = BidafAttn(hidden_size_1 * 3, method="dot")  # no parameter for dot
-        self.lstm_raw = RNNEncoder(300, hidden_size_1, bidirectional=True, dropout_p=0, n_layers=1, rnn_type="lstm")
+        self.embedding = nn.Embedding(vocab_size, embed_size)
+        self.bidaf = BidafAttn(lstm_hidden_size_1 * 3, method="dot")  # no parameter for dot
+        self.lstm_raw = RNNEncoder(embed_size, lstm_hidden_size_1, bidirectional=True, dropout_p=0, n_layers=1, rnn_type="lstm")
 
         self.video_fc = nn.Sequential(
-            nn.Dropout(0.5),
-            nn.Linear(vid_feat_size, embedding_size),
+            nn.Dropout(pdrop),
+            nn.Linear(vid_feat_size, embed_size),
             nn.Tanh(),
         )
+
         self.lstm_mature_vid = RNNEncoder(
-            hidden_size_1 * 2 * 3, hidden_size_2, bidirectional=True, 
-            dropout_p=0, n_layers=1, rnn_type="lstm")
-        self.classifier_vid = MLP(hidden_size_2*2, num_classes, 500, n_layers_cls)
+            lstm_hidden_size_1 * 2 * 3, lstm_hidden_size_2,
+            bidirectional=True, 
+            dropout_p=0,
+            n_layers=1,
+            rnn_type="lstm")
+
+        self.classifier_vid = MLP(
+            lstm_hidden_size_2*2,
+            num_classes,
+            mlp_hidden_size,
+            mlp_num_layers,
+            pdrop,
+        )
+
         self.config = config
 
     def load_embedding(self, pretrained_embedding):
