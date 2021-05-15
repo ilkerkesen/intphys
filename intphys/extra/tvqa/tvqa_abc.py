@@ -15,7 +15,7 @@ class ABC(nn.Module):
         lstm_hidden_size_2 = config["lstm_hidden_size_2"] # 256
         mlp_hidden_size = config["mlp_hidden_size"] # 256
         mlp_num_layers = config["mlp_num_layers"]
-        vid_feat_size = config.get("vid_feat_size", 2048) # 2048
+        vid_feat_size = config["vid_feat_size"]  # 2048
         embed_size = config["embed_size"] # 300
         vocab_size = config["vocab_size"]
         num_classes = config["output_size"]
@@ -81,13 +81,16 @@ class ABC(nn.Module):
 
 if __name__ == '__main__':
     config = {
-        "hidden_size_1": 150,
-        "hidden_size_2": 300,
-        "n_layers_cls": 1,
+        "lstm_hidden_size_1": 150,
+        "lstm_hidden_size_2": 300,
+        "mlp_hidden_size": 300,
+        "mlp_num_layers": 2,
         "vid_feat_size": 2048,
         "embed_size": 300,
         "input_size": 100,
         "output_size": 21,
+        "vocab_size": 100,
+        "dropout": 0.2,
         "device": "cuda:0",
     }
     model = ABC(config)

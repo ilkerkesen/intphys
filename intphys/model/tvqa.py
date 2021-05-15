@@ -23,6 +23,7 @@ class TVQA(nn.Module):
         self.frame_encoder = self.create_submodule("frame_encoder")
         self.adaptive_pool = nn.AdaptiveAvgPool2d(config["pool_size"])
         self.flatten = nn.Flatten()
+        config["tvqa"]["vid_feat_size"] = config["pool_size"]**2 * self.frame_encoder.out_channels
         self.tvqa = ABC(config["tvqa"])
     
     def create_submodule(self, submodule):
@@ -43,6 +44,7 @@ class TVQA(nn.Module):
     def forward(self, simulations, questions, lengths, **kwargs):
         visual = self.process_simulation(simulations, **kwargs)
         B, T = visual.shape[:2]
-        visual_lengths = torch.tensor([T for i in range(B)]).to(lengths.device)
-        return self.tvqa(questions, lengths, visual, visual_lengths)
+        visual_lengths = torch.tensor([T for i in range(B)])
+        # visual_lengths = torch.tensor([T for i in range(B)]).to(lengths.device)
+        return self.tvqa(questions, torch.tensor(lengths), visual, visual_lengths)
     

@@ -396,7 +396,7 @@ def make_sentence_batch(batch, batch_first=True):
 def base_collate_fn(batch):
     # question batching
     questions = make_sentence_batch([x["question"] for x in batch])
-    lengths = torch.tensor([x["question_length"] for x in batch])
+    lengths = [x["question_length"] for x in batch]
 
     # answer batching
     answers = torch.cat([instance["answer"] for instance in batch])

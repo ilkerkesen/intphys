@@ -9,7 +9,7 @@ question_encoder:
   hidden_size: 256
   embed_size: 256
   vocab_size: null
-  bidirectional: true
+  bidirectional: false
 frame_encoder:
   architecture: resnet18
   input_size: 256
