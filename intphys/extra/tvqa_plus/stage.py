@@ -57,28 +57,28 @@ class STAGE(nn.Module):
         super(STAGE, self).__init__()
         self.opt = opt
         self.inference_mode = False
-        self.vfeat_flag = opt.vfeat_flag
-        self.vfeat_size = opt.vfeat_size
-        self.t_iter = opt.t_iter
-        self.extra_span_length = opt.extra_span_length
-        self.add_local = opt.add_local
-        self.use_sup_att = opt.use_sup_att
-        self.num_negatives = opt.num_negatives
-        self.negative_pool_size = opt.negative_pool_size
-        self.num_hard = opt.num_hard
-        self.drop_topk = opt.drop_topk
-        self.margin = opt.margin
-        self.att_loss_type = opt.att_loss_type
-        self.scale = opt.scale
-        self.alpha = opt.alpha
-        self.dropout = opt.dropout
-        self.hsz = opt.hsz
+        self.vfeat_flag = True  # opt.vfeat_flag
+        self.vfeat_size = opt["vfeat_size"]
+        self.t_iter = opt["t_iter"]
+        self.extra_span_length = opt["extra_span_length"]
+        self.add_local = opt["add_local"]
+        self.use_sup_att = False # opt["use_sup_att"]
+        self.num_negatives = opt["num_negatives"]
+        self.negative_pool_size = opt["negative_pool_size"]
+        self.num_hard = opt["num_hard"]
+        self.drop_topk = opt["drop_topk"]
+        self.margin = opt["margin"]
+        self.att_loss_type = opt["att_loss_type"]
+        self.scale = opt["scale"]
+        self.alpha = opt["alpha"]
+        self.dropout = opt["dropout"]
+        self.hsz = opt["hidden_size"]
         self.bsz = None
         self.num_seg = None
-        self.num_a = 5
+        self.num_a = 1  # 5
         self.flag_cnt = 1
 
-        self.wd_size = opt.embedding_size
+        self.wd_size = opt["embed_size"]
         self.bridge_hsz = 300
 
         self.bert_word_encoding_fc = nn.Sequential(
@@ -105,16 +105,16 @@ class STAGE(nn.Module):
             nn.LayerNorm(self.hsz),
         )
 
-        self.input_encoder = StackedEncoder(n_blocks=opt.input_encoder_n_blocks,
-                                            n_conv=opt.input_encoder_n_conv,
-                                            kernel_size=opt.input_encoder_kernel_size,
-                                            num_heads=opt.input_encoder_n_heads,
+        self.input_encoder = StackedEncoder(n_blocks=opt["input_encoder_n_blocks"],
+                                            n_conv=opt["input_encoder_n_conv"],
+                                            kernel_size=opt["input_encoder_kernel_size"],
+                                            num_heads=opt["input_encoder_n_heads"],
                                             hidden_size=self.hsz,
                                             dropout=self.dropout)
 
         self.str_attn = StructuredAttention(dropout=self.dropout,
-                                            scale=opt.scale,
-                                            add_void=opt.add_non_visual)  # no parameters inside
+                                            scale=opt["scale"],
+                                            add_void=opt["add_non_visual"])  # no parameters inside
 
         self.c2q_down_projection = nn.Sequential(
             nn.LayerNorm(3 * self.hsz),
@@ -123,10 +123,10 @@ class STAGE(nn.Module):
             nn.ReLU(True),
         )
 
-        self.cls_encoder = StackedEncoder(n_blocks=opt.cls_encoder_n_blocks,
-                                          n_conv=opt.cls_encoder_n_conv,
-                                          kernel_size=opt.cls_encoder_kernel_size,
-                                          num_heads=opt.cls_encoder_n_heads,
+        self.cls_encoder = StackedEncoder(n_blocks=opt["cls_encoder_n_blocks"],
+                                          n_conv=opt["cls_encoder_n_conv"],
+                                          kernel_size=opt["cls_encoder_kernel_size"],
+                                          num_heads=opt["cls_encoder_n_heads"],
                                           hidden_size=self.hsz,
                                           dropout=self.dropout)
 
