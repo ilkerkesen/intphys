@@ -53,7 +53,8 @@ def train(config):
     if config["logger"]["name"] is None:
         model_name = config["model"]["architecture"]
         dataset_name = config["dataset"]["name"]
-        config["logger"]["name"] = f"{model_name}-{dataset_name}"
+        split_config = config["dataset"]["params"].get("split_info", "random")
+        config["logger"]["name"] = f"{model_name}-{dataset_name}-{split_config}"
     logger = pl.loggers.TensorBoardLogger(**config["logger"])
 
     # checkpoint
@@ -84,6 +85,9 @@ def train(config):
     # create data loaders
     dm.train_data.adapt2model(experiment.model)
     dm.val_data.adapt2model(experiment.model)
+    if config["dataset"]["params"]["cached"]:
+        dm.train_data.build_cache()
+        dm.val_data.build_cache()
 
     # create trainer object
     trainer = pl.Trainer(

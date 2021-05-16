@@ -25,12 +25,12 @@ class Experiment(pl.LightningModule):
         self.save_hyperparameters(self.config)
         self._generate_flag = False
 
-    def forward(self, simulation, question, **kwargs):
-        return self.model(simulation, question, **kwargs)
+    def forward(self, simulation, question, lengths, **kwargs):
+        return self.model(simulation, question, lengths, **kwargs)
 
     def training_step(self, batch, batch_index):
-        (simulations, questions, additional), (answers,) = batch
-        output = self(simulations, questions, **additional["kwargs"])
+        (simulations, questions, lengths, additional), (answers,) = batch
+        output = self(simulations, questions, lengths, **additional["kwargs"])
         loss = self.criterion(output, answers)
         _, predictions = torch.max(output, 1)
         acc = (predictions == answers).float().mean()
@@ -79,8 +79,8 @@ class Experiment(pl.LightningModule):
         self.calculate_accuracy(outputs, split=split)
 
     def batch_accuracy(self, batch, batch_index, testing=False):
-        (simulations, questions, additional), (answers,) = batch
-        output = self(simulations, questions, **additional["kwargs"])
+        (simulations, questions, lengths, additional), (answers,) = batch
+        output = self(simulations, questions, lengths, **additional["kwargs"])
         _, predictions = torch.max(output, 1)
         correct = (answers == predictions).sum()
         num_instances = torch.tensor(answers.size(), device=self.device).float()

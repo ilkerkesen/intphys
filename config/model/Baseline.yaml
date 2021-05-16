@@ -4,7 +4,7 @@ input_size: null
 output_size: null
 input_width: null
 input_height: null
-dropout: 0.0
+dropout: 0.2
 pool_size: 5
 question_encoder:
   architecture: LSTMEncoder

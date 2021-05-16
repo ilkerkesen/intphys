@@ -4,6 +4,7 @@ from copy import copy
 import torch
 import torch.nn as nn
 from torchvision.models import resnet18 as _resnet18
+from torchvision.models import resnet101 as _resnet101
 from torchvision.transforms import Compose, Normalize, Lambda
 
 
@@ -56,13 +57,26 @@ def resnet18(config):
     layers = list(net.children())
     net = nn.Sequential(*layers[:4+config["num_layers"]-1])
     if config["pretrained"] and config["freeze"]:
-        net.normalizer = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         for par in net.parameters():
             par.requires_grad = False
-    # FIXME: input_size => input_width, input_height
     out_size = config["input_size"] // 4 // 2**(config["num_layers"]-2)
     out_channels = 2**(5+config["num_layers"]-1)
     net.out_features = out_channels * out_size * out_size
     net.out_channels = out_channels
+    net.config = config
+    return net
+
+    
+def resnet101(config):
+    net = _resnet101(pretrained=config["pretrained"], progress=True)
+    layers = list(net.children())
+    net = nn.Sequential(*layers[:4+config["num_layers"]-1])
+    if config["pretrained"] and config["freeze"]:
+        for par in net.parameters():
+            par.requires_grad = False
+    if config["num_layers"] > 1:
+        net.out_channels = 64 * 2**(config["num_layers"])
+    else:
+        net.out_channels = 64
     net.config = config
     return net
