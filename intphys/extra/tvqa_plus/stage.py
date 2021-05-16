@@ -5,11 +5,11 @@ import numpy as np
 import pprint
 from collections import defaultdict
 
-from context_query_attention import StructuredAttention
-from encoder import StackedEncoder
-from cnn import DepthwiseSeparableConv
-from model_utils import save_pickle, mask_logits, flat_list_of_lists, \
-    find_max_triples, get_high_iou_sapns, expand_span
+from intphys.extra.tvqa_plus.context_query_attention import StructuredAttention
+from intphys.extra.tvqa_plus.encoder import StackedEncoder
+from intphys.extra.tvqa_plus.cnn import DepthwiseSeparableConv
+from intphys.extra.tvqa_plus.model_utils import save_pickle, mask_logits, \
+    flat_list_of_lists, find_max_triples, get_high_iou_sapns, expand_span
 
 
 class LinearWrapper(nn.Module):
@@ -57,7 +57,6 @@ class STAGE(nn.Module):
         super(STAGE, self).__init__()
         self.opt = opt
         self.inference_mode = False
-        self.sub_flag = opt.sub_flag
         self.vfeat_flag = opt.vfeat_flag
         self.vfeat_size = opt.vfeat_size
         self.t_iter = opt.t_iter
@@ -77,7 +76,7 @@ class STAGE(nn.Module):
         self.bsz = None
         self.num_seg = None
         self.num_a = 5
-        self.flag_cnt = self.sub_flag + self.vfeat_flag
+        self.flag_cnt = 1
 
         self.wd_size = opt.embedding_size
         self.bridge_hsz = 300
@@ -90,27 +89,14 @@ class STAGE(nn.Module):
             nn.LayerNorm(self.bridge_hsz),
         )
 
-        if self.sub_flag:
-            print("Activate sub branch")
-
-        if self.vfeat_flag:
-            print("Activate vid branch")
-            self.vid_fc = nn.Sequential(
-                nn.LayerNorm(self.vfeat_size),
-                nn.Dropout(self.dropout),
-                nn.Linear(self.vfeat_size, self.bridge_hsz),
-                nn.ReLU(True),
-                nn.LayerNorm(self.bridge_hsz)
-            )
-
-        if self.flag_cnt == 2:
-            self.concat_fc = nn.Sequential(
-                nn.LayerNorm(3 * self.hsz),
-                nn.Dropout(self.dropout),
-                nn.Linear(3 * self.hsz, self.hsz),
-                nn.ReLU(True),
-                nn.LayerNorm(self.hsz),
-            )
+        print("Activate vid branch")
+        self.vid_fc = nn.Sequential(
+            nn.LayerNorm(self.vfeat_size),
+            nn.Dropout(self.dropout),
+            nn.Linear(self.vfeat_size, self.bridge_hsz),
+            nn.ReLU(True),
+            nn.LayerNorm(self.bridge_hsz)
+        )
 
         self.input_embedding = nn.Sequential(
             nn.Dropout(self.dropout),
@@ -232,64 +218,30 @@ class STAGE(nn.Module):
 
         attended_sub, attended_vid, attended_vid_mask, attended_sub_mask = (None, ) * 4
         other_outputs = {}  # {"pos_noun_mask": batch.qa_noun_masks}  # used to visualization and compute att acc
-        if self.sub_flag:
-            num_imgs, num_words = batch.sub_bert.shape[1:3]
-            sub_embed = self.base_encoder(batch.sub_bert.view(bsz*num_imgs, num_words, -1),  # (N*Li, Lw)
-                                          batch.sub_mask.view(bsz * num_imgs, num_words),  # (N*Li, Lw)
-                                          self.bert_word_encoding_fc,
-                                          self.input_embedding,
-                                          self.input_encoder)  # (N*Li, Lw, D)
 
-            sub_embed = sub_embed.contiguous().view(bsz, 1, num_imgs, num_words, -1)  # (N, Li, Lw, D)
-            sub_mask = batch.sub_mask.view(bsz, 1, num_imgs, num_words)  # (N, 1, Li, Lw)
+        num_imgs, num_regions = batch.vid.shape[1:3]
+        vid_embed = F.normalize(batch.vid, p=2, dim=-1)  # (N, Li, Lr, D)
 
-            attended_sub, attended_sub_mask, sub_raw_s, sub_normalized_s = \
-                self.qa_ctx_attention(a_embed, sub_embed, a_mask, sub_mask,
-                                      noun_mask=None,
-                                      non_visual_vectors=None)
+        vid_embed = self.base_encoder(vid_embed.view(bsz*num_imgs, num_regions, -1),  # (N*Li, Lw)
+                                        batch.vid_mask.view(bsz * num_imgs, num_regions),  # (N*Li, Lr)
+                                        self.vid_fc,
+                                        self.input_embedding,
+                                        self.input_encoder)  # (N*Li, L, D)
 
-            other_outputs["sub_normalized_s"] = sub_normalized_s
-            other_outputs["sub_raw_s"] = sub_raw_s
+        vid_embed = vid_embed.contiguous().view(bsz, 1, num_imgs, num_regions, -1)  # (N, 1, Li, Lr, D)
+        vid_mask = batch.vid_mask.view(bsz, 1, num_imgs, num_regions)  # (N, 1, Li, Lr)
 
-        if self.vfeat_flag:
-            num_imgs, num_regions = batch.vid.shape[1:3]
-            vid_embed = F.normalize(batch.vid, p=2, dim=-1)  # (N, Li, Lr, D)
+        attended_vid, attended_vid_mask, vid_raw_s, vid_normalized_s = \
+            self.qa_ctx_attention(a_embed, vid_embed, a_mask, vid_mask,
+                                    noun_mask=None,
+                                    non_visual_vectors=None)
 
-            vid_embed = self.base_encoder(vid_embed.view(bsz*num_imgs, num_regions, -1),  # (N*Li, Lw)
-                                          batch.vid_mask.view(bsz * num_imgs, num_regions),  # (N*Li, Lr)
-                                          self.vid_fc,
-                                          self.input_embedding,
-                                          self.input_encoder)  # (N*Li, L, D)
+        other_outputs["vid_normalized_s"] = vid_normalized_s
+        other_outputs["vid_raw_s"] = vid_raw_s
 
-            vid_embed = vid_embed.contiguous().view(bsz, 1, num_imgs, num_regions, -1)  # (N, 1, Li, Lr, D)
-            vid_mask = batch.vid_mask.view(bsz, 1, num_imgs, num_regions)  # (N, 1, Li, Lr)
-
-            attended_vid, attended_vid_mask, vid_raw_s, vid_normalized_s = \
-                self.qa_ctx_attention(a_embed, vid_embed, a_mask, vid_mask,
-                                      noun_mask=None,
-                                      non_visual_vectors=None)
-
-            other_outputs["vid_normalized_s"] = vid_normalized_s
-            other_outputs["vid_raw_s"] = vid_raw_s
-
-        if self.flag_cnt == 2:
-            visual_text_embedding = torch.cat([attended_sub,
-                                               attended_vid,
-                                               attended_sub * attended_vid], dim=-1)  # (N, 5, Li, Lqa, 3D)
-            visual_text_embedding = self.concat_fc(visual_text_embedding)  # (N, 5, Li, Lqa, D)
-            out, target, t_scores = self.classfier_head_multi_proposal(
-                visual_text_embedding, attended_vid_mask, batch.target, batch.ts_label, batch.ts_label_mask,
-                extra_span_length=self.extra_span_length)
-        elif self.sub_flag:
-            out, target, t_scores = self.classfier_head_multi_proposal(
-                attended_sub, attended_sub_mask, batch.target, batch.ts_label, batch.ts_label_mask,
-                extra_span_length=self.extra_span_length)
-        elif self.vfeat_flag:
-            out, target, t_scores = self.classfier_head_multi_proposal(
-                attended_vid, attended_vid_mask, batch.target, batch.ts_label, batch.ts_label_mask,
-                extra_span_length=self.extra_span_length)
-        else:
-            raise NotImplementedError
+        out, target, t_scores = self.classfier_head_multi_proposal(
+            attended_vid, attended_vid_mask, batch.target, batch.ts_label, batch.ts_label_mask,
+            extra_span_length=self.extra_span_length)
         assert len(out) == len(target)
 
         other_outputs["temporal_scores"] = t_scores  # (N, 5, Li) or (N, 5, Li, 2)
