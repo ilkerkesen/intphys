@@ -57,7 +57,7 @@ class DataModule(pl.LightningDataModule):
             self.test_data = Dataset(
                 split="test",
                 transform=self.frame_transform,
-                **self.config["dataset"]
+                **self.config["dataset"]["params"]
             )
 
     def train_dataloader(self):

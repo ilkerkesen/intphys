@@ -7,33 +7,12 @@ from copy import deepcopy
 from itertools import product
 
 
-SPLITS = ("train", "val", "test")
-HEADERS = [
-    "split",
-    "template",
-    "family",
-    "most_freq",
-    "most_freq_count",
-    "most_pred",
-    "most_pred_count",
-    "total",
-    "freq%",
-    "pred%",
-    "dummy%",
-    "model%",
-]
-
-
 def parse_line(l):
-    l = l.replace(".json", "")
-    l = l.replace("validation", "val")
-    l = l.replace("descriptive", "desc")
-    l = l.strip().split('\t')
-    return l
+    return l.strip().split('\t')
 
 
 def read_headers(f):
-    return parse_line(f.readline().replace("template_filename", "template"))
+    return parse_line(f.readline().replace("question_type", "template"))
 
 
 def parse_int(k, v):
@@ -46,7 +25,6 @@ def lines2records(headers, lines):
         try:
             vid, qid = map(int, entry[:2])
         except ValueError:
-            import ipdb; ipdb.set_trace()
             1 == 1
         record = {k:parse_int(k,v) for (k,v) in zip(headers[2:], entry[2:])}
         records[vid,qid] = record
@@ -58,173 +36,6 @@ def read_file(f):
     lines = [parse_line(l) for l in f.readlines()]
     f.close()
     return lines2records(headers, lines)
-
-
-def split_accuracy(records):
-    correct, total, gold_freq, pred_freq = dict(), dict(), dict(), dict()
-    for instance in records.values():
-        split = instance["split"]
-        answer = instance["answer"]
-        prediction = instance["prediction"]
-        this = int(instance["answer"] == instance["prediction"])
-        correct[split] = this + correct.get(split, 0)
-        total[split] = 1 + total.get(split, 0)
-        gold_freq[split,answer] = 1 + gold_freq.get((split,answer), 0)
-        pred_freq[split,prediction] = 1 + pred_freq.get((split,prediction), 0)
-    # most_freq = sorted(gold_freq.items(), by=lambda x: x[-1], reverse=True)[0]
-    # most_pred = sorted(gold_freq.items(), by=lambda x: x[-1], reverse=True)[0]
-    return correct, total, gold_freq, pred_freq
-
-
-def split_template_accuracy(records):
-    correct, total = dict(), dict()
-    for instance in records.values():
-        split, template = instance["split"], instance["template"]
-        this = int(instance["answer"] == instance["prediction"])
-        correct[split,template] = this + correct.get((split, template), 0)
-        total[split,template] = 1 + total.get((split, template), 0)
-    return correct, total
-
-
-def split_template_family_analytics(records):
-    correct, total, gold_freq, pred_freq = dict(), dict(), dict(), dict()
-
-    # k: key, ka: key with answer, kp: key with prediction
-    # This is just a simplification. I don't want to write
-    # something like most_freq[split,template,qfi,answer]
-    def update_dicts(this, k, ka, kp):
-        correct[k] = this + correct.get(k, 0)
-        total[k] = 1 + total.get(k, 0)
-        gold_freq[ka] = 1 + gold_freq.get(ka, 0)
-        pred_freq[kp] = 1 + pred_freq.get(kp, 0)
-
-    for instance in records.values():
-        split, template = instance["split"], instance["template"]
-        qfi = instance["question_family_index"]
-        answer, prediction = instance["answer"], instance.get("prediction")
-        this = int(answer == prediction)
-
-        # split based, k = (split,)
-        k = (split,); ka = k + (answer,); kp = k + (prediction,)
-        update_dicts(this, k, ka, kp)
-
-        # template based, k = (split,template)
-        k = k + (template,); ka = k + (answer,); kp = k + (prediction,)
-        update_dicts(this, k, ka, kp)
-
-        # question-family-index based, k = (split,template,qfi)
-        k = k + (qfi,); ka = k + (answer,); kp = k + (prediction,)
-        update_dicts(this, k, ka, kp)
-
-    return correct, total, gold_freq, pred_freq
-
-
-def filt_items(items, f):
-    return [item for item in items if f(item)]
-
-
-def filt_dict(freq, key_length=None, f=lambda x: x[0][0] == "train"):
-    items = filt_items(freq.items(), f)
-    key_length = key_length if key_length is not None else False
-    filt2 = lambda x: True if key_length < 2 else len(x[0]) == key_length
-    items = filt_items(items, f=filt2)
-    return sorted(items, reverse=True, key=lambda x: x[-1])
-
-
-def report_type(mode="split"):
-    exclude = {
-        "split": ("template", "family"),
-        "template": ("family",),
-        "family": (),
-    }
-    headers = [h for h in HEADERS if not h in exclude.get(mode, ())]
-    key_sorters = {
-        "split": lambda x: SPLITS.index(x[0]),
-        "template": lambda x: (SPLITS.index(x[0]), x[1]),
-        "family": lambda x: (SPLITS.index(x[0]), x[1], x[2]),
-    }
-    f = lambda d, k: filt_dict(d, key_length=0, f=lambda x: x[0][:-1] == k)
-    def _report_type(func):
-        def wrapper(*args, **kwargs):
-            mydict = args[0]
-            helper1 = lambda n: [k for k in mydict.keys() if len(k) == n]
-            helper2 = lambda ks: sorted(ks, key=lambda x: (split))
-            keys = {
-                "split": list(product(SPLITS)),
-                "template": [k for k in mydict.keys() if len(k) == 2],
-                "family": [k for k in mydict.keys() if len(k) == 3],
-            }
-            sorted_keys = sorted(keys[mode], key=key_sorters[mode])
-            return func(*args, **kwargs,
-                        headers=headers,
-                        keys=sorted_keys,
-                        _filter=f)
-        return wrapper
-    return _report_type
-
-
-def print_headers(func):
-    def wrapper(*args, **kwargs):
-        delimiter = kwargs.get("delimiter", ",")
-        print(delimiter.join(kwargs["headers"]))
-        return func(*args, **kwargs)
-    return wrapper
-
-
-def report(correct, total, gold_freq, pred_freq, **kwargs):
-    keys = kwargs.get("keys")
-    headers = kwargs.get("headers")
-    _filter = kwargs.get("_filter")
-    delimiter = kwargs.get("delimiter", ",")
-
-    num_keys = len(keys[0])
-    train_most_freq = {}
-    for k in keys:
-        split = k[0]
-        _gold, _pred = _filter(gold_freq, k), _filter(pred_freq, k)
-        most_freq, most_freq_count = _gold[0][0][-1], _gold[0][1]
-        most_pred, most_pred_count = _pred[0][0][-1], _pred[0][1]
-        if split == "train":
-            train_most_freq[k[1:]] = most_freq
-        try:
-            most_freq_count = gold_freq[k + (train_most_freq[k[1:]],)]
-        except KeyError:
-            import ipdb; ipdb.set_trace()
-            1 == 1
-        _perc = lambda n: round(100*n/total[k], 2)
-        record = {
-            "most_freq": most_freq,
-            "most_freq_count": most_freq_count,
-            "most_pred": most_pred,
-            "most_pred_count": most_pred_count,
-            "total": total[k],
-            "freq%": _perc(most_freq_count),
-            "pred%": _perc(most_pred_count),
-            "dummy%": _perc(most_freq_count),
-            "model%": _perc(correct[k]),
-        }
-        for i in range(num_keys):
-            record[headers[i]] = k[i]
-        print(delimiter.join([str(record[h]) for h in headers]))
-
-
-@report_type("split")
-@print_headers
-def report_split(*args, **kwargs):
-    return report(*args, **kwargs)
-
-
-@report_type("template")
-@print_headers
-def report_template(*args, **kwargs):
-    return report(*args, **kwargs)
-
-
-@report_type("family")
-@print_headers
-def report_family(*args, **kwargs):
-    return report(*args, **kwargs)
-
 
 @click.command()
 @click.argument("answers-file", type=click.File("r"))
@@ -241,9 +52,21 @@ def main(answers_file, predictions_file, mode, delimiter):
     for (vid, qid) in merged.keys():
         merged[vid,qid].update(predictions.get((vid,qid)))
 
-    analytics = split_template_family_analytics(merged)
-    func = eval("report_" + mode)
-    results = func(*analytics, delimiter=delimiter)
+    num_correct = 0
+    for (k, v) in merged.items():
+        if v["prediction"] == v["answer"]:
+            num_correct += 1
+    print("overall={}%".format(round(100 * num_correct / len(merged), 2)))
+
+    task_num_correct, task_num_examples = dict(), dict()
+    for (k, v) in merged.items():
+        task = v["template"]
+        task_num_examples[task] = 1 + task_num_examples.get(task, 0)
+        if v["prediction"] == v["answer"]:
+            task_num_correct[task] = 1 + task_num_correct.get(task, 0)
+    for (task, num_examples) in task_num_examples.items():
+        task_acc = round(100 * task_num_correct.get(task, 0) / num_examples, 2)
+        print("{}={}%".format(task, task_acc))
 
 
 if __name__ == "__main__":

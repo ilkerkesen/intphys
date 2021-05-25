@@ -1,31 +1,24 @@
 #!/usr/bin/env python
 
-import hydra
-import os
 import os.path as osp
-import json
 
+import click
 from tqdm import tqdm
 
-from intphys.data import IntuitivePhysicsDataset
+from intphys.data import CRAFT
 
 
-@hydra.main(strict=False)
-def main(config):
-    path = osp.abspath(osp.expanduser(config["path"]))
-    json_file = osp.join(path, "dataset.json")
+def json2tsv(path, split_info="random"):
+    path = osp.abspath(osp.expanduser(path))
+    dataset = CRAFT(path=path, split="test", split_info=split_info)
     tsv_file = osp.join(path, "questions.tsv")
-
-    with open(json_file) as f:
-        simulations = json.load(f)
 
     with open(tsv_file, "w") as f:
         headers = (
             "video_index",
             "question_index",
             "split",
-            "video",
-            "template_filename",
+            "question_type",
             "question_family_index",
             "question",
             "answer",
@@ -34,13 +27,17 @@ def main(config):
         # write first row, headers
         f.write("\t".join(headers) + "\n")
 
-        for simulation in tqdm(simulations):
-            for question in simulation["questions"]["questions"]:
-                question["split"] = simulation["split"]
-                columns = [str(question[k]).lower() for k in headers]
-                f.write("\t".join(columns) + "\n")
-
+        for question in tqdm(dataset.questions):
+            columns = [str(question[k]).lower() for k in headers]
+            f.write("\t".join(columns) + "\n")
     print("done")
+
+
+@click.command()
+@click.argument("path", type=click.Path(exists=True))
+def main(path):
+    json2tsv(path, split_info="random")
+    json2tsv(path, split_info="hard")
 
 
 if __name__ == "__main__":

@@ -10,15 +10,10 @@ trainer:
 
 # data loader
 loader:
-  batch_size: 32
+  batch_size: 64
   pin_memory: false
-  num_workers: 0
+  num_workers: 5
   shuffle: false
-
-# dataset
-dataset:
-  path: ~/data/intphys/Dataset_3000_230920
-  cached: false
 
 # checkpoint path
 checkpoint: null
@@ -29,3 +24,4 @@ output: null
 # defaults
 defaults:
   - hydra/job_logging: disabled
+  - dataset: CRAFT
