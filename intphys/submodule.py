@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision.models import resnet18 as _resnet18
+from torchvision.models import resnet101 as _resnet101
 from torchvision.models.video import r3d_18 as _r3d_18
 from torchvision.models.video import r2plus1d_18 as _r2plus1d_18
 from torch.nn.utils.rnn import pack_padded_sequence
@@ -113,9 +115,7 @@ def resnet18(config):
     if config["pretrained"] and config["freeze"]:
         for par in net.parameters():
             par.requires_grad = False
-    out_size = config["input_size"] // 4 // 2**(config["num_layers"]-2)
     out_channels = 2**(5+config["num_layers"]-1)
-    net.out_features = out_channels * out_size * out_size
     net.out_channels = out_channels
     net.config = config
     return net
