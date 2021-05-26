@@ -11,7 +11,7 @@ from intphys.data import CRAFT
 def json2tsv(path, split_info="random"):
     path = osp.abspath(osp.expanduser(path))
     dataset = CRAFT(path=path, split="test", split_info=split_info)
-    tsv_file = osp.join(path, "questions.tsv")
+    tsv_file = osp.join(path, f"questions-{split_info}.tsv")
 
     with open(tsv_file, "w") as f:
         headers = (
