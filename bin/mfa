@@ -8,13 +8,18 @@ import click
 from intphys.data import CRAFT
 
 
+def format_acc(acc):
+    return round(100 * acc, 2)
+
+
 @click.command()
 @click.option("--path", type=click.Path(exists=True))
-@click.option("--split", type=str, default="random")
-def main(path, split):
+@click.option("--test-split", type=str, default="test")
+@click.option("--split-info", type=str, default="random")
+def main(path, test_split, split_info):
     path = osp.abspath(osp.expanduser(path))
-    train_data = CRAFT(path=path, split="train", split_info=split)
-    test_data = CRAFT(path=path, split="test", split_info=split)
+    train_data = CRAFT(path=path, split="train", split_info=split_info)
+    test_data = CRAFT(path=path, split=test_split, split_info=split_info)
 
     # most frequent answer
     answer_dict = dict()
@@ -28,14 +33,19 @@ def main(path, split):
             most_frequent = answer
             frequency = count 
     
-    num_correct, num_examples = 0, 0
+    num_correct, num_examples = dict(), dict()
     for q in test_data.questions:
+        subtask = q["question_type"].lower()
         if q["answer"].lower() == most_frequent:
-            num_correct += 1
-        num_examples += 1
+            num_correct[subtask] = 1 + num_correct.get(subtask, 0)
+        num_examples[subtask] = 1 + num_examples.get(subtask, 0)
 
+    acc = format_acc(sum(num_correct.values()) / sum(num_examples.values()))
     print("most frequent answer = {}, accuracy = {}%".format(
-        most_frequent, round(100 * num_correct / num_examples, 2)))
+        most_frequent, acc))
+    for subtask in sorted(num_correct.keys()):
+        acc = num_correct[subtask] / num_examples[subtask]
+        print("-- task = {}, accuracy = {}%".format(subtask, format_acc(acc)))
 
     answer_dict = dict()
     for q in train_data.questions:
@@ -54,16 +64,20 @@ def main(path, split):
                 most_frequent[answer_type] = answer
                 frequency[answer_type] = count
   
-    num_correct, num_examples = 0, 0
+    num_correct, num_examples = dict(), dict() 
     for q in test_data.questions:
+        subtask = q["question_type"].lower()
         answer = q["answer"].lower()
         answer_type = q["answer_type"].lower()
         if answer == most_frequent[answer_type]:
-            num_correct += 1
-        num_examples += 1
+            num_correct[subtask] = 1 + num_correct.get(subtask, 0)
+        num_examples[subtask] = 1 + num_examples.get(subtask, 0)
     
-    print("answer-type based most frequent answer accuracy = {}%".format(
-        round(100 * num_correct / num_examples, 2))) 
+    acc = format_acc(sum(num_correct.values()) / sum(num_examples.values()))
+    print("\nanswer-type based most frequent answer accuracy = {}%".format(acc))
+    for subtask in sorted(num_correct.keys()):
+        acc = num_correct[subtask] / num_examples[subtask]
+        print("-- task = {}, accuracy = {}%".format(subtask, format_acc(acc)))
 
 
 if __name__ == "__main__":
