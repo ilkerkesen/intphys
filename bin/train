@@ -41,7 +41,7 @@ def adapt2data(config, dataset):
 def train(config):
     config = OmegaConf.to_container(config)
     config = pl.utilities.parsing.AttributeDict(config)
-    pl.seed_everything(config["seed"])
+    pl.seed_everything(config["seed"], workers=True)
 
     # load data
     dm = DataModule(config)
@@ -93,6 +93,7 @@ def train(config):
     trainer = pl.Trainer(
         logger=logger,
         callbacks=[checkpoint_callback],
+        deterministic=True,
         **config["trainer"])
 
     trainer.fit(experiment, dm)

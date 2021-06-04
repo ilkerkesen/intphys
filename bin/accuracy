@@ -56,7 +56,7 @@ def main(answers_file, predictions_file, mode, delimiter):
     for (k, v) in merged.items():
         if v["prediction"] == v["answer"]:
             num_correct += 1
-    print("overall={}%".format(round(100 * num_correct / len(merged), 2)))
+    overall_acc = round(100 * num_correct / len(merged), 2)
 
     task_num_correct, task_num_examples = dict(), dict()
     for (k, v) in merged.items():
@@ -64,9 +64,13 @@ def main(answers_file, predictions_file, mode, delimiter):
         task_num_examples[task] = 1 + task_num_examples.get(task, 0)
         if v["prediction"] == v["answer"]:
             task_num_correct[task] = 1 + task_num_correct.get(task, 0)
-    for (task, num_examples) in task_num_examples.items():
-        task_acc = round(100 * task_num_correct.get(task, 0) / num_examples, 2)
+    tasks = sorted(list(task_num_examples.keys()))
+    for task in tasks:
+        num_examples = task_num_examples[task]
+        num_correct = task_num_correct.get(task, 0)
+        task_acc = round(100 * num_correct / num_examples, 2)
         print("{}={}%".format(task, task_acc))
+    print("overall={}%".format(overall_acc))
 
 
 if __name__ == "__main__":

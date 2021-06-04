@@ -1,6 +1,6 @@
 #!/bin/bash
 
-FPS="1.6"
+FPS="5"
 # DATASET_DIR="/kuacc/users/ikesen16/data/intphys/Dataset_3000_230920"
 DATASET_DIR="/userfiles/ikesen16/data/craft"
 VIDEOS_DIR="$DATASET_DIR/videos"

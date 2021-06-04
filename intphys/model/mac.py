@@ -1,5 +1,7 @@
 # https://github.com/rosinality/mac-network-pytorch/blob/564ca5bbb39bb2bff45e9fa84c898fadd8145d94/model.py
 
+from math import sqrt
+
 from intphys.data import SimulationInput
 import torch
 from torch.autograd import Variable
@@ -7,7 +9,7 @@ from torch import nn
 from torch.nn.init import kaiming_uniform_, xavier_uniform_, normal
 import torch.nn.functional as F
 
-from intphys.submodule import resnet18
+from intphys.submodule import resnet18, r3d_18
 
 
 def linear(in_dim, out_dim, bias=True):
@@ -58,15 +60,15 @@ class ReadUnit(nn.Module):
         self.attn = linear(dim, 1)
 
     def forward(self, memory, know, control):
+        scale = 1 / sqrt(know.shape[1])
         mem = self.mem(memory[-1]).unsqueeze(2)
-        concat = self.concat(torch.cat([mem * know, know], 1) \
-                                .permute(0, 2, 1))
+        know = scale * know
+        input = torch.cat([mem * know, know], 1).permute(0, 2, 1)
+        concat = self.concat(input)
         attn = concat * control[-1].unsqueeze(1)
         attn = self.attn(attn).squeeze(2)
         attn = F.softmax(attn, 1).unsqueeze(1)
-
         read = (attn * know).sum(2)
-
         return read
 
 
@@ -165,14 +167,28 @@ class MACUnit(nn.Module):
 class MACNetwork(nn.Module):
     def __init__(self, n_vocab, dim, embed_hidden=300,
                 max_step=12, self_attention=False, memory_gate=False,
-                classes=28, visual_features_dim=1024, dropout=0.15):
+                classes=28, visual_features_dim=1024, dropout=0.15,
+                sim_input=None):
         super().__init__()
 
-        self.conv = nn.Sequential(
-            nn.Conv2d(visual_features_dim, dim, 3, padding=1),
-            nn.ELU(),
-            nn.Conv2d(dim, dim, 3, padding=1),
-            nn.ELU())
+        if sim_input != SimulationInput.VIDEO:
+            self.conv = nn.Sequential(
+                nn.Conv2d(visual_features_dim, dim, 3, padding=1),
+                nn.BatchNorm2d(dim),
+                nn.ELU(),
+                nn.Conv2d(dim, dim, 3, padding=1),
+                nn.BatchNorm2d(dim),
+                nn.ELU(),
+            )
+        else:
+            self.conv = nn.Sequential(
+                nn.Conv3d(visual_features_dim, dim, 3, padding=1),
+                nn.BatchNorm3d(dim),
+                nn.ELU(),
+                nn.Conv3d(dim, dim, 3, padding=1),
+                nn.BatchNorm3d(dim),
+                nn.ELU(),
+            ) 
 
         self.embed = nn.Embedding(n_vocab, embed_hidden)
         self.lstm = nn.LSTM(embed_hidden, dim,
@@ -197,8 +213,8 @@ class MACNetwork(nn.Module):
 
         kaiming_uniform_(self.conv[0].weight)
         self.conv[0].bias.data.zero_()
-        kaiming_uniform_(self.conv[2].weight)
-        self.conv[2].bias.data.zero_()
+        kaiming_uniform_(self.conv[3].weight)
+        self.conv[3].bias.data.zero_()
 
         kaiming_uniform_(self.classifier[0].weight)
 
@@ -211,6 +227,7 @@ class MACNetwork(nn.Module):
         embed = self.embed(question)
         embed = nn.utils.rnn.pack_padded_sequence(embed, question_len,
                                                 batch_first=True)
+                                               
         lstm_out, (h, _) = self.lstm(embed)
         lstm_out, _ = nn.utils.rnn.pad_packed_sequence(lstm_out,
                                                     batch_first=True)
@@ -218,10 +235,8 @@ class MACNetwork(nn.Module):
         h = h.permute(1, 0, 2).contiguous().view(b_size, -1)
 
         memory = self.mac(lstm_out, h, img)
-
         out = torch.cat([memory, h], 1)
         out = self.classifier(out)
-
         return out
 
 
@@ -241,7 +256,7 @@ class MACBaseline(nn.Module):
 
         self.frame_encoder = self.create_submodule("frame_encoder")
         config["mac"]["visual_features_dim"] = self.frame_encoder.out_channels
-        self.mac = MACNetwork(**config["mac"])
+        self.mac = MACNetwork(**config["mac"], sim_input=self.SIMULATION_INPUT)
 
     def create_submodule(self, submodule):
         config = self.config[submodule]
@@ -265,3 +280,8 @@ class MACBaselineFF(MACBaseline):
 class MACBaselineLF(MACBaseline):
     SIMULATION_INPUT = SimulationInput.LAST_FRAME
     NUM_VIDEO_FRAMES = 1
+
+
+class MACVideoBaseline(MACBaseline):
+    SIMULATION_INPUT = SimulationInput.VIDEO
+    NUM_VIDEO_FRAMES = 1 # see parent class constructor
