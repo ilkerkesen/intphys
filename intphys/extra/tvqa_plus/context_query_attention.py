@@ -95,6 +95,7 @@ class StructuredAttention(nn.Module):
         C = F.dropout(F.normalize(C, p=2, dim=-1), p=self.dropout, training=self.training)
         Q = F.dropout(F.normalize(Q, p=2, dim=-1), p=self.dropout, training=self.training)
 
+        import ipdb; ipdb.set_trace()
         S_mask = torch.matmul(c_mask.unsqueeze(-1), q_mask.unsqueeze(-2))  # (N, 5, Li, Lqa, Lr)
         S = torch.matmul(C, Q.transpose(-2, -1))  # (N, 5, Li, Lqa, Lr)
         masked_S = S - 1e10*(1 - S_mask)  # (N, 5, Li, Lqa, Lr)
