@@ -87,12 +87,8 @@ class TVQAPlus(nn.Module):
         return y 
 
     def process_question(self, questions, lengths, **kwargs):
-        _, (hiddens, _) = self.question_encoder(questions, lengths)
-        if self.question_encoder.lstm.bidirectional:
-            hiddens = torch.cat([hiddens[0], hiddens[1]], dim=1)
-        else:
-            hiddens = hiddens.squeeze(0)
-        return hiddens
+        output, (hiddens, _) = self.question_encoder(questions, lengths)
+        return nn.utils.rnn.pad_packed_sequence(output, batch_first=True)[0]
 
     def forward(self, simulations, questions, lengths, **kwargs):
         visual = self.process_simulation(simulations, **kwargs)

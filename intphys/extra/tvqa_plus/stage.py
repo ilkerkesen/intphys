@@ -208,11 +208,13 @@ class STAGE(nn.Module):
         num_a = self.num_a
         hsz = self.hsz
 
+        import ipdb; ipdb.set_trace()
         a_embed = self.base_encoder(batch["qas_bert"].view(bsz*num_a, -1, self.wd_size),  # (N*5, L, D)
                                     batch["qas_mask"].view(bsz * num_a, -1),  # (N*5, L)
                                     self.bert_word_encoding_fc,
                                     self.input_embedding,
                                     self.input_encoder)  # (N*5, L, D)
+        import ipdb; ipdb.set_trace()
         a_embed = a_embed.view(bsz, num_a, 1, -1, hsz)  # (N, 5, 1, L, D)
         a_mask = batch["qas_mask"].view(bsz, num_a, 1, -1)  # (N, 5, 1, L)
 
