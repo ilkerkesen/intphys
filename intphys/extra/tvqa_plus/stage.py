@@ -239,7 +239,7 @@ class STAGE(nn.Module):
                                     non_visual_vectors=None)
         
         mask = attended_vid_mask.sum((1,2,3)).unsqueeze(-1)
-        output = torch.nan_to_num(attended_vid)
+        output = attended_vid
         output = output.sum((1, 2, 3)) / mask
         return self.softmax_layer(output)
 
@@ -250,7 +250,7 @@ class STAGE(nn.Module):
         out, target, t_scores = self.classfier_head_multi_proposal(
             attended_vid, attended_vid_mask, batch["target"], batch["ts_label"], batch["ts_label_mask"],
             extra_span_length=self.extra_span_length)
-        # assert len(out) == len(target)  # NOTE: we seperate training and inference
+        assert len(out) == len(target)  # NOTE: we seperate training and inference
 
         other_outputs["temporal_scores"] = t_scores  # (N, 5, Li) or (N, 5, Li, 2)
 
@@ -460,7 +460,6 @@ class STAGE(nn.Module):
         statement = statement.view(bsz*num_a*num_img, num_words, -1)  # (N*5*Li, Lqa, D)
         statement_mask = statement_mask.view(bsz*num_a*num_img, num_words)  # (N*5*Li, Lqa)
         statement = self.cls_encoder(statement, statement_mask)  # (N*5*Li, Lqa, D)
-        statement = torch.nan_to_num(statement)  # FIXME: why NaNs come?
         max_statement = torch.max(mask_logits(statement, statement_mask.unsqueeze(2)), 1)[0]  # (N*5*Li, D)
         max_statement_mask = (statement_mask.sum(1) != 0).float().view(bsz, num_a, num_img, 1)  # (N, 5, Li, 1)
         max_statement = max_statement.view(bsz*num_a, num_img, -1)  # (N, 5, Li, D)
@@ -494,6 +493,7 @@ class STAGE(nn.Module):
                     torch.max(mask_logits(stacked_max_statement, max_statement_mask), 2)[0]  # (N, 5, D)
             # targets = targets
 
+        import ipdb; ipdb.set_trace()
         answer_scores = self.classifier(max_max_statement).squeeze(2)  # (N, 5)
         return answer_scores, targets, temporal_scores_st_ed  # (N_new, 5), (N_new, ) (N, 5, Li, 2)
 
