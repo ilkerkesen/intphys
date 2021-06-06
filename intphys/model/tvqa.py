@@ -95,15 +95,14 @@ class TVQAPlus(nn.Module):
         textual = self.process_question(questions, lengths, **kwargs)
         B, T, HW = visual.shape[:3]
         device = visual.device
-        visual_lengths = torch.empty(B, T, HW, dtype=visual.dtype).fill_(T)
-        visual_lengths = visual_lengths.to(device)
-        textual_lengths = torch.zeros(B, 1, max(lengths))
+        visual_lengths = torch.empty(B, T, HW, dtype=visual.dtype).fill_(1)
+        textual_lengths = torch.zeros(B, 1, max(lengths), dtype=visual.dtype)
         for (i, length) in enumerate(lengths):
             textual_lengths[i, 0, :length] = 1.0
         batch = {
             "qas_bert": textual,
             "qas_mask": textual_lengths.to(device),
             "vid": visual,
-            "vid_mask": visual_lengths,
+            "vid_mask": visual_lengths.to(device),
         }
         return self.stage(batch)

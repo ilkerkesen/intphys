@@ -77,6 +77,7 @@ class STAGE(nn.Module):
         self.num_seg = None
         self.num_a = 1  # 5
         self.flag_cnt = 1
+        self.softmax_layer = nn.Linear(opt["hidden_size"], opt["output_size"])
 
         self.wd_size = opt["embed_size"]
         self.bridge_hsz = 300
@@ -176,6 +177,7 @@ class STAGE(nn.Module):
         self.word_embedding.weight.requires_grad = requires_grad
 
     def forward(self, batch):
+        return self.forward_main(batch)
         if self.inference_mode:
             return self.forward_main(batch)
         else:
@@ -208,13 +210,11 @@ class STAGE(nn.Module):
         num_a = self.num_a
         hsz = self.hsz
 
-        import ipdb; ipdb.set_trace()
         a_embed = self.base_encoder(batch["qas_bert"].view(bsz*num_a, -1, self.wd_size),  # (N*5, L, D)
                                     batch["qas_mask"].view(bsz * num_a, -1),  # (N*5, L)
                                     self.bert_word_encoding_fc,
                                     self.input_embedding,
                                     self.input_encoder)  # (N*5, L, D)
-        import ipdb; ipdb.set_trace()
         a_embed = a_embed.view(bsz, num_a, 1, -1, hsz)  # (N, 5, 1, L, D)
         a_mask = batch["qas_mask"].view(bsz, num_a, 1, -1)  # (N, 5, 1, L)
 
@@ -237,14 +237,20 @@ class STAGE(nn.Module):
             self.qa_ctx_attention(a_embed, vid_embed, a_mask, vid_mask,
                                     noun_mask=None,
                                     non_visual_vectors=None)
+        
+        mask = attended_vid_mask.sum((1,2,3)).unsqueeze(-1)
+        output = torch.nan_to_num(attended_vid)
+        output = output.sum((1, 2, 3)) / mask
+        return self.softmax_layer(output)
 
         other_outputs["vid_normalized_s"] = vid_normalized_s
         other_outputs["vid_raw_s"] = vid_raw_s
 
+        batch["target"] = None; batch["ts_label"] = None; batch["ts_label_mask"] = None
         out, target, t_scores = self.classfier_head_multi_proposal(
             attended_vid, attended_vid_mask, batch["target"], batch["ts_label"], batch["ts_label_mask"],
             extra_span_length=self.extra_span_length)
-        assert len(out) == len(target)
+        # assert len(out) == len(target)  # NOTE: we seperate training and inference
 
         other_outputs["temporal_scores"] = t_scores  # (N, 5, Li) or (N, 5, Li, 2)
 
@@ -454,6 +460,7 @@ class STAGE(nn.Module):
         statement = statement.view(bsz*num_a*num_img, num_words, -1)  # (N*5*Li, Lqa, D)
         statement_mask = statement_mask.view(bsz*num_a*num_img, num_words)  # (N*5*Li, Lqa)
         statement = self.cls_encoder(statement, statement_mask)  # (N*5*Li, Lqa, D)
+        statement = torch.nan_to_num(statement)  # FIXME: why NaNs come?
         max_statement = torch.max(mask_logits(statement, statement_mask.unsqueeze(2)), 1)[0]  # (N*5*Li, D)
         max_statement_mask = (statement_mask.sum(1) != 0).float().view(bsz, num_a, num_img, 1)  # (N, 5, Li, 1)
         max_statement = max_statement.view(bsz*num_a, num_img, -1)  # (N, 5, Li, D)
@@ -472,7 +479,7 @@ class STAGE(nn.Module):
             temporal_scores_st_ed = t_score_container[0]  # (N, 5, Li, 2)
 
         # mask before softmax
-        temporal_scores_st_ed = mask_logits(temporal_scores_st_ed, ts_labels_mask.view(bsz, 1, num_img, 1))
+        # temporal_scores_st_ed = mask_logits(temporal_scores_st_ed, ts_labels_mask.view(bsz, 1, num_img, 1))
 
         # when predict answer, only consider 1st level representation !!!
         # since the others are all generated from the 1st level
