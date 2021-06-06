@@ -77,6 +77,7 @@ class STAGE(nn.Module):
         self.num_seg = None
         self.num_a = 1  # 5
         self.flag_cnt = 1
+        self.softmax_layer = nn.Linear(opt["hidden_size"], opt["output_size"])
 
         self.wd_size = opt["embed_size"]
         self.bridge_hsz = 300
@@ -176,6 +177,7 @@ class STAGE(nn.Module):
         self.word_embedding.weight.requires_grad = requires_grad
 
     def forward(self, batch):
+        return self.forward_main(batch)
         if self.inference_mode:
             return self.forward_main(batch)
         else:
@@ -203,46 +205,52 @@ class STAGE(nn.Module):
                 ts_label_mask: (N, L) for both 'st_ed' and 'frm'
         Returns:
         """
-        self.bsz = len(batch.qid)
+        self.bsz = batch["qas_bert"].shape[0]  # len(batch["qid"])
         bsz = self.bsz
         num_a = self.num_a
         hsz = self.hsz
 
-        a_embed = self.base_encoder(batch.qas_bert.view(bsz*num_a, -1, self.wd_size),  # (N*5, L, D)
-                                    batch.qas_mask.view(bsz * num_a, -1),  # (N*5, L)
+        a_embed = self.base_encoder(batch["qas_bert"].view(bsz*num_a, -1, self.wd_size),  # (N*5, L, D)
+                                    batch["qas_mask"].view(bsz * num_a, -1),  # (N*5, L)
                                     self.bert_word_encoding_fc,
                                     self.input_embedding,
                                     self.input_encoder)  # (N*5, L, D)
         a_embed = a_embed.view(bsz, num_a, 1, -1, hsz)  # (N, 5, 1, L, D)
-        a_mask = batch.qas_mask.view(bsz, num_a, 1, -1)  # (N, 5, 1, L)
+        a_mask = batch["qas_mask"].view(bsz, num_a, 1, -1)  # (N, 5, 1, L)
 
         attended_sub, attended_vid, attended_vid_mask, attended_sub_mask = (None, ) * 4
         other_outputs = {}  # {"pos_noun_mask": batch.qa_noun_masks}  # used to visualization and compute att acc
 
-        num_imgs, num_regions = batch.vid.shape[1:3]
-        vid_embed = F.normalize(batch.vid, p=2, dim=-1)  # (N, Li, Lr, D)
+        num_imgs, num_regions = batch["vid"].shape[1:3]
+        vid_embed = F.normalize(batch["vid"], p=2, dim=-1)  # (N, Li, Lr, D)
 
         vid_embed = self.base_encoder(vid_embed.view(bsz*num_imgs, num_regions, -1),  # (N*Li, Lw)
-                                        batch.vid_mask.view(bsz * num_imgs, num_regions),  # (N*Li, Lr)
+                                        batch["vid_mask"].view(bsz * num_imgs, num_regions),  # (N*Li, Lr)
                                         self.vid_fc,
                                         self.input_embedding,
                                         self.input_encoder)  # (N*Li, L, D)
 
         vid_embed = vid_embed.contiguous().view(bsz, 1, num_imgs, num_regions, -1)  # (N, 1, Li, Lr, D)
-        vid_mask = batch.vid_mask.view(bsz, 1, num_imgs, num_regions)  # (N, 1, Li, Lr)
+        vid_mask = batch["vid_mask"].view(bsz, 1, num_imgs, num_regions)  # (N, 1, Li, Lr)
 
         attended_vid, attended_vid_mask, vid_raw_s, vid_normalized_s = \
             self.qa_ctx_attention(a_embed, vid_embed, a_mask, vid_mask,
                                     noun_mask=None,
                                     non_visual_vectors=None)
+        
+        mask = attended_vid_mask.sum((1,2,3)).unsqueeze(-1)
+        output = attended_vid
+        output = output.sum((1, 2, 3)) / mask
+        return self.softmax_layer(output)
 
         other_outputs["vid_normalized_s"] = vid_normalized_s
         other_outputs["vid_raw_s"] = vid_raw_s
 
+        batch["target"] = None; batch["ts_label"] = None; batch["ts_label_mask"] = None
         out, target, t_scores = self.classfier_head_multi_proposal(
-            attended_vid, attended_vid_mask, batch.target, batch.ts_label, batch.ts_label_mask,
+            attended_vid, attended_vid_mask, batch["target"], batch["ts_label"], batch["ts_label_mask"],
             extra_span_length=self.extra_span_length)
-        assert len(out) == len(target)
+        assert len(out) == len(target)  # NOTE: we seperate training and inference
 
         other_outputs["temporal_scores"] = t_scores  # (N, 5, Li) or (N, 5, Li, 2)
 
@@ -252,13 +260,13 @@ class STAGE(nn.Module):
                 "t_scores": F.softmax(t_scores, dim=2),
                 "att_predictions": self.get_att_prediction(
                     scores=other_outputs["vid_raw_s"],
-                    object_vocab=batch.eval_object_word_ids,
-                    words=batch.qas,
-                    vid_names=batch.vid_name,
-                    qids=batch.qid,
-                    img_indices=batch.image_indices,
-                    boxes=batch.boxes,
-                    start_indices=batch.anno_st_idx,
+                    object_vocab=batch["eval_object_word_ids"],
+                    words=batch["qas"],
+                    vid_names=batch["vid_name"],
+                    qids=batch["qid"],
+                    img_indices=batch["image_indices"],
+                    boxes=batch["boxes"],
+                    start_indices=batch["anno_st_idx"],
                 ) if self.vfeat_flag else None,
             }
             return inference_outputs
@@ -267,18 +275,18 @@ class STAGE(nn.Module):
         att_predictions = None
         # if (self.use_sup_att or not self.training) and self.vfeat_flag:
         if self.use_sup_att and self.training and self.vfeat_flag:
-            start_indices = batch.anno_st_idx
+            start_indices = batch["anno_st_idx"]
             try:
                 cur_att_loss, cur_att_predictions = \
-                    self.get_att_loss(other_outputs["vid_raw_s"], batch.att_labels, batch.target, batch.qas,
-                                      qids=batch.qid,
-                                      q_lens=batch.q_l,
-                                      vid_names=batch.vid_name,
-                                      img_indices=batch.image_indices,
-                                      boxes=batch.boxes,
+                    self.get_att_loss(other_outputs["vid_raw_s"], batch["att_labels"], batch["target"], batch["qas"],
+                                      qids=batch["qid"],
+                                      q_lens=batch["q_l"],
+                                      vid_names=batch["vid_name"],
+                                      img_indices=batch["image_indices"],
+                                      boxes=batch["boxes"],
                                       start_indices=start_indices,
                                       num_negatives=self.num_negatives,
-                                      use_hard_negatives=batch.use_hard_negatives,
+                                      use_hard_negatives=batch["use_hard_negatives"],
                                       drop_topk=self.drop_topk)
             except AssertionError as e:
                 save_pickle(
@@ -291,8 +299,8 @@ class STAGE(nn.Module):
             att_predictions = cur_att_predictions
 
         temporal_loss = self.get_ts_loss(temporal_scores=t_scores,
-                                         ts_labels=batch.ts_label,
-                                         answer_indices=batch.target)
+                                         ts_labels=batch["ts_label"],
+                                         answer_indices=batch["target"])
 
         if self.training:
             return [out, target], att_loss, att_predictions, temporal_loss, t_scores, other_outputs
@@ -470,7 +478,7 @@ class STAGE(nn.Module):
             temporal_scores_st_ed = t_score_container[0]  # (N, 5, Li, 2)
 
         # mask before softmax
-        temporal_scores_st_ed = mask_logits(temporal_scores_st_ed, ts_labels_mask.view(bsz, 1, num_img, 1))
+        # temporal_scores_st_ed = mask_logits(temporal_scores_st_ed, ts_labels_mask.view(bsz, 1, num_img, 1))
 
         # when predict answer, only consider 1st level representation !!!
         # since the others are all generated from the 1st level
@@ -485,6 +493,7 @@ class STAGE(nn.Module):
                     torch.max(mask_logits(stacked_max_statement, max_statement_mask), 2)[0]  # (N, 5, D)
             # targets = targets
 
+        import ipdb; ipdb.set_trace()
         answer_scores = self.classifier(max_max_statement).squeeze(2)  # (N, 5)
         return answer_scores, targets, temporal_scores_st_ed  # (N_new, 5), (N_new, ) (N, 5, Li, 2)
 
