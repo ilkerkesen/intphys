@@ -1,6 +1,6 @@
 # CRAFT Baseline Models
 
-This part of the repository contains official baseline implementations for [CRAFT: A Benchmark for Causal Reasoning About Forces and inTeractions](https://sites.google.com/view/craft-benchmark). 
+This part of the repository contains official baseline implementations for [CRAFT: A Benchmark for Causal Reasoning About Forces and inTeractions](https://sites.google.com/view/craft-benchmark). We used existing implementations for [TVQA](https://github.com/jayleicn/TVQA), [TVQA+](https://github.com/jayleicn/TVQAplus/), [MAC](https://github.com/rosinality/mac-network-pytorch), [G-SWM](https://github.com/zhixuan-lin/G-SWM).
 
 ## Requirements
 
@@ -55,12 +55,3 @@ To evaluate a baseline, generate answers first, and then evaluate:
 ```
 
 To evaluate models on hard setting, insert `dataset.params.split_info="hard"` option for `./bin/generate` command and use `questions-hard.tsv` as first input argument of `./bin/accuracy` command.
-
-## Original Implementations
-
-In this work, we used some existing implementations,
-
-1. [TVQA](https://github.com/jayleicn/TVQA)
-2. [TVQA+](https://github.com/jayleicn/TVQAplus/)
-3. [MAC](https://github.com/rosinality/mac-network-pytorch)
-4. [G-SWM](https://github.com/zhixuan-lin/G-SWM)
