@@ -39,7 +39,7 @@ To train the models for easy setting, run the following commands,
 ./bin/train model=VideoBaseline trainer.max_epochs=30 loader.batch_size=32 # LSTM-CNN-V
 ./bin/train model=MACV trainer.max_epochs=30 loader.batch_size=32 # MAC-V
 ./bin/train model=TVQA trainer.max_epochs=30 loader.batch_size=32 # TVQA
-./bin/train model=TVQAPlus trainer.max_epochs=30 loader.batch_size=32 trainer.precision=32 # TVQA
+./bin/train model=TVQAPlus trainer.max_epochs=30 loader.batch_size=32 trainer.precision=32 # TVQA+
 ```
 
 To train models on hard setting insert `dataset.params.split_info="hard"` option. Please type `./bin/train help` or take a look at `config/train.yaml` file for more training configuration.
