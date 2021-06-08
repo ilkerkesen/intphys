@@ -6,7 +6,7 @@ This part of the repository contains official baseline implementations for [CRAF
 
 To install requirements:
 
-```setup
+```bash
 conda env create -f environment.yml
 conda activate intphys
 pip install numpy==1.20.3 click==8.0.1 hydra-core==1.0.6
@@ -20,7 +20,7 @@ pip install -e .
 
 First, download and extract dataset. Then, prepare dataset for baseline models:
 
-```setup
+```bash
 ./bin/json2tsv ./path/to/data
 ./bin/extract-frames --datadir ./path/to/data
 DATASET_DIR=./path/to/data ./bin/downsample-videos
@@ -30,7 +30,7 @@ DATASET_DIR=./path/to/data ./bin/downsample-videos
 
 To train the models for easy setting, run the following commands,
 
-```train
+```bash
 ./bin/train model.architecture=LSTMBaseline # LSTM 
 ./bin/train model.architecture=LSTMCNNBaselineFF # LSTM-CNN-F
 ./bin/train model.architecture=LSTMCNNBaselineLF # LSTM-CNN-L
@@ -49,7 +49,7 @@ To train models on hard setting insert `dataset.params.split_info="hard"` option
 
 To evaluate a baseline, generate answers first, and then evaluate:
 
-```eval
+```bash
 ./bin/generate checkpoint="./path/to/best/model.ckpt" output="./path/to/output/file.tsv"
 ./bin/accuracy ./path/to/data/questions-random.tsv ./path/to/output/file.tsv
 ```
