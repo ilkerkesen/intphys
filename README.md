@@ -10,7 +10,8 @@ To install requirements:
 conda env create -f environment.yml
 conda activate intphys
 pip install numpy==1.20.3 click==8.0.1 hydra-core==1.0.6
-pip install torch==1.8.1+cu101 torchvision==0.9.1+cu101 torchtext==0.9.1 -f https://download.pytorch.org/whl/torch_stable.html
+pip install torch==1.8.1+cu101 torchvision==0.9.1+cu101 torchtext==0.9.1 \ 
+    -f https://download.pytorch.org/whl/torch_stable.html
 pip install pytorch-lightning=1.3.3
 pip install -e .
 ```
