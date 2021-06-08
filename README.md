@@ -60,7 +60,7 @@ To evaluate models on hard setting, insert `dataset.params.split_info="hard"` op
 
 In this work, we used some existing implementations,
 
-    1. [TVQA](https://github.com/jayleicn/TVQA)
-    2. [TVQA+](https://github.com/jayleicn/TVQAplus/)
-    3. [MAC](https://github.com/rosinality/mac-network-pytorch)
-    4. [G-SWM](https://github.com/zhixuan-lin/G-SWM)
+1. [TVQA](https://github.com/jayleicn/TVQA)
+2. [TVQA+](https://github.com/jayleicn/TVQAplus/)
+3. [MAC](https://github.com/rosinality/mac-network-pytorch)
+4. [G-SWM](https://github.com/zhixuan-lin/G-SWM)
