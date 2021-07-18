@@ -9,6 +9,7 @@ from ..data import SimulationInput
 
 __all__ = (
     "LSTMBaseline",
+    "BERTBaseline",
     "LSTMCNNBaselineFF",
     "LSTMCNNBaselineLF",
     "LSTMCNNBaseline2F",
@@ -40,6 +41,28 @@ class LSTMBaseline(nn.Module):
             hiddens = hiddens.squeeze(0)
         answers = self.linear(self.dropout(hiddens))
         return answers
+
+
+class BERTBaseline(nn.Module):
+    SIMULATION_INPUT = SimulationInput.NO_FRAMES
+    NUM_VIDEO_FRAMES = 0
+
+    def __init__(self, config):
+        super().__init__()
+        self.question_encoder = BERTEncoder(config["question_encoder"])
+        self.linear = nn.Linear(
+            self.question_encoder.output_size,
+            config["output_size"],
+        )
+        self.dropout = nn.Dropout(p=config["dropout"])
+        self.config = config
+
+    def forward(self, simulations, questions, lengths, **kwargs):
+        embed = self.question_encoder(questions, lengths)
+        hidden = embed.last_hidden_state[:, 0, :]
+        hidden = self.dropout(hidden)
+        output = self.linear(hidden)
+        return output
 
 
 class LSTMCNNBaseline(nn.Module):

@@ -10,6 +10,7 @@ question_encoder:
   embed_size: 256
   vocab_size: null
   bidirectional: false
+  glove: false
 frame_encoder:
   architecture: resnet18
   input_size: 256

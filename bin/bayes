@@ -1,0 +1,112 @@
+#!/usr/bin/env python
+
+import os
+import os.path as osp
+from copy import deepcopy
+from random import shuffle
+
+import click
+import numpy as np
+from sklearn.naive_bayes import CategoricalNB
+from tqdm import tqdm
+
+from intphys.data import CRAFT, SimulationInput
+
+
+def format_acc(acc):
+    return round(100 * acc, 2)
+
+
+@click.command()
+@click.option("--path", type=click.Path(exists=True))
+@click.option("--test-split", type=str, default="test")
+@click.option("--split-info", type=str, default="random")
+@click.option("--ngram", type=int, default=1)
+@click.option("--max-epoch", type=int, default=10)
+@click.option("--batch-size", type=int, default=2048)
+def main(path, test_split, split_info, ngram, max_epoch, batch_size):
+    np.random.seed(42)
+    path = osp.abspath(osp.expanduser(path))
+    train_data = CRAFT(
+        path=path,
+        split="train",
+        split_info=split_info,
+        ngram=ngram)
+    val_data = CRAFT(
+        path=path,
+        split="validation",
+        split_info=split_info,
+        ngram=ngram)
+    test_data = CRAFT(
+        path=path,
+        split=test_split,
+        split_info=split_info,
+        ngram=ngram)
+    train_data.sim_input = SimulationInput.NO_FRAMES
+    val_data.sim_input = SimulationInput.NO_FRAMES
+    test_data.sim_input = SimulationInput.NO_FRAMES
+
+    n_samples, n_features = len(train_data), len(train_data.question_vocab)
+    X_trn = np.zeros((n_samples, n_features), dtype=float)
+    y_trn = np.empty((n_samples,), dtype=int)
+    for i, item in enumerate(train_data):
+        q = item["question"].numpy()
+        a = item["answer"].item()
+        X_trn[i, q] += 1
+        y_trn[i] = a
+    used_features = X_trn.sum(0) >= 1
+    X_trn = X_trn[:, used_features]
+
+    X_val = np.zeros((len(val_data), n_features), dtype=float)
+    y_val = np.empty((len(val_data),), dtype=int)
+    for i, item in enumerate(val_data):
+        q = item["question"].numpy()
+        a = item["answer"].item()
+        X_val[i, q] += 1
+        y_val[i] = a
+    X_val = X_val[:, used_features]
+    
+    X_tst = np.zeros((len(test_data), n_features), dtype=float)
+    y_tst = np.empty((len(test_data),), dtype=int)
+    y_task = [None for i in range(len(test_data))]
+    for i, item in enumerate(test_data):
+        q = item["question"].numpy()
+        a = item["answer"].item()
+        task = item["template"].lower()
+        y_task[i] = task
+        X_tst[i, q] += 1
+        y_tst[i] = a
+    X_tst = X_tst[:, used_features]
+   
+    model = CategoricalNB()
+    classes = np.unique(y_trn)
+    best_model = deepcopy(model)
+    best_acc = val_acc = 0.0
+    for epoch in range(max_epoch):
+        indices = list(range(0, n_samples, batch_size))
+        shuffle(indices)
+        for i in tqdm(indices):
+            X_, y_ = X_trn[i:i+batch_size], y_trn[i:i+batch_size]
+            model.partial_fit(X_, y_, classes=classes)
+
+        y_val_pred = model.predict(X_val)
+        val_acc = 100 * np.sum(y_val_pred == y_val) / len(y_val)
+        if val_acc >= best_acc:
+            best_acc = val_acc
+            best_model = deepcopy(model)
+        print(f"epoch={epoch}, acc={val_acc}%")
+   
+    tasks = np.unique(y_task)
+    y_tst_pred = best_model.predict(X_tst)
+    pred = y_tst_pred == y_tst
+    for subtask in tasks:
+        mask = [t == subtask for t in y_task]
+        this_pred = pred[mask]
+        this_acc = round(100 * this_pred.sum() / len(this_pred), 2)
+        print(f"task={subtask}, acc={this_acc}%")
+    tst_acc = round(100 * pred.sum() / len(pred), 2)
+    print(f"task=overall, acc={tst_acc}%")
+
+
+if __name__ == "__main__":
+    main()
