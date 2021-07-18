@@ -14,6 +14,8 @@ import numpy as np
 import cv2
 from tqdm import tqdm
 from torchtext.data import get_tokenizer
+from transformers import AutoTokenizer
+from intphys.submodule import BERTEncoder
 
 
 UNK = "<UNK>"
@@ -56,8 +58,9 @@ class SimulationInput(IntEnum):
 
 
 class Vocab(object):
-    def __init__(self, instances, min_occur=0):
+    def __init__(self, instances, min_occur=0, ngram=1):
         self.min_occur = min_occur
+        self.ngram = ngram
         self.tokenizer = get_tokenizer("basic_english")
         self.build_count_dict(instances)
         self.build_dicts()
@@ -66,8 +69,10 @@ class Vocab(object):
         count_dict = dict()
         for instance in instances:
             tokens = self.tokenizer(str(instance))
-            for token in tokens:
-                count_dict[token] = count_dict.get(token, 0) + 1
+            for i in range(len(tokens)+1-self.ngram):
+                ngram = tokens[i:i+self.ngram]
+                ngram = " ".join(ngram)
+                count_dict[ngram] = count_dict.get(ngram, 0) + 1
         self.count_dict = count_dict
 
     def build_dicts(self):
@@ -88,7 +93,9 @@ class Vocab(object):
     def __getitem__(self, x):
         x = (x,) if isinstance(x, int) else x
         x = x.tolist() if isinstance(x, torch.Tensor) else x
-        x = self.tokenizer(x) if isinstance(x, str) else x
+        if isinstance(x, str):
+            x, n = self.tokenizer(x), self.ngram
+            x = [" ".join(x[i:i+n]) for i in range(len(x)+1-n)]
 
         if all(isinstance(xi, str) for xi in x):
             x2i = self.w2i
@@ -108,7 +115,8 @@ class BaseDataset(data.Dataset):
     HEIGHT = 0
     WIDTH = 0
 
-    def __init__(self, path, split="train", fps=0, cached=False, transform=None, split_info="random", *args, **kwargs):
+    def __init__(self, path, split="train", fps=0, cached=False, transform=None,
+                 split_info="random", ngram=1, *args, **kwargs):
         super().__init__()
         self.datadir = osp.abspath(osp.expanduser(path))
         self.split = split
@@ -118,6 +126,8 @@ class BaseDataset(data.Dataset):
         self.sim_input = None
         self.cached = cached
         self.transform = transform
+        self.use_bert = False
+        self.ngram = ngram
 
         self.read_jsonfile()
         self.build_vocabs()
@@ -129,6 +139,10 @@ class BaseDataset(data.Dataset):
             self.normalizer = model.frame_encoder.normalizer
         except AttributeError:
             pass
+
+        if isinstance(model.question_encoder, BERTEncoder):
+            self.use_bert = True
+            self.bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
     def read_jsonfile(self):
         raise NotImplementedError
@@ -212,7 +226,9 @@ class CRAFT(BaseDataset):
             self.json_data = json.load(f)
 
     def build_vocabs(self):
-        self.question_vocab = Vocab([x['question'] for x in self.json_data])
+        self.question_vocab = Vocab(
+            [x['question'] for x in self.json_data],
+            ngram=self.ngram)
         self.answer_vocab = Vocab([x['answer'] for x in self.json_data])
         self.choice_vocab = Vocab([])
 
@@ -269,12 +285,18 @@ class CRAFT(BaseDataset):
                 self.split, item["video_index"]))
         if isinstance(simulation, torch.Tensor):
             simulation = (simulation,)
-        question = self.question_vocab[item["question"]]
+        if self.use_bert:
+            input_dict = self.bert_tokenizer(item["question"])
+            question = input_dict["input_ids"]
+            length = input_dict["attention_mask"]
+        else:
+            question = self.question_vocab[item["question"]]
+            length = len(question)
         answer = self.answer_vocab[self.answer_vocab.tokenizer(str(item["answer"]))]
         item_dict = {
             "simulation": simulation,
             "question": torch.tensor(question),
-            "question_length": len(question),
+            "question_length": length,
             "answer": torch.tensor(answer),
             "answer_type": item["answer_type"].lower(),
             "template": item["question_type"].lower(),
@@ -383,11 +405,14 @@ class CLEVRER(BaseDataset):
         return item_dict
 
 
-def make_sentence_batch(batch, batch_first=True):
+def make_sentence_batch(batch, batch_first=True, pad_right=False):
     batchsize, longest = len(batch), len(batch[0])
     sentences = torch.zeros((batchsize, longest), dtype=torch.long)
     for (i, sentence) in enumerate(batch):
-        sentences[i, -len(sentence):] = sentence
+        if not pad_right:
+            sentences[i, -len(sentence):] = sentence
+        else:
+            sentences[i, :len(sentence)] = sentence
     if not batch_first:
         sentences = sentences.transpose(0, 1)
     return sentences
@@ -395,8 +420,16 @@ def make_sentence_batch(batch, batch_first=True):
 
 def base_collate_fn(batch):
     # question batching
-    questions = make_sentence_batch([x["question"] for x in batch])
-    lengths = [x["question_length"] for x in batch]
+    if isinstance(batch[0]["question_length"], int):
+        questions = make_sentence_batch([x["question"] for x in batch])
+        lengths = [x["question_length"] for x in batch]
+    else:
+        lengths = torch.zeros(len(batch), len(batch[0]["question_length"]))
+        for i, bi in enumerate(batch):
+            mask = bi["question_length"]
+            lengths[i, :len(mask)] = torch.tensor(mask)
+        questions = make_sentence_batch(
+            [x["question"] for x in batch], pad_right=True)
 
     # answer batching
     answers = torch.cat([instance["answer"] for instance in batch])
@@ -407,7 +440,6 @@ def base_collate_fn(batch):
     simulations = torch.cat([helper(i) for i in range(num_simulations)], dim=0)
 
     return (simulations, questions, lengths, answers)
-
 
 def train_collate_fn(unsorted_batch):
     unsorted_batch = [x for x in unsorted_batch if x is not None]

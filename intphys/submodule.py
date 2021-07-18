@@ -1,3 +1,6 @@
+import os.path as osp
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,6 +9,11 @@ from torchvision.models import resnet101 as _resnet101
 from torchvision.models.video import r3d_18 as _r3d_18
 from torchvision.models.video import r2plus1d_18 as _r2plus1d_18
 from torch.nn.utils.rnn import pack_padded_sequence
+from torchtext.vocab import GloVe
+from transformers import AutoConfig, AutoModel
+
+
+GLOVE_DIM = 300
 
 
 __all__ = (
@@ -14,11 +22,38 @@ __all__ = (
     "resnet18",
     "resnet101",
     "LSTMEncoder",
+    "BERTEncoder",
     "r3d_18",
     "r2plus1d_18",
     "FiLMLayer",
     "FiLMBlock2D",
 )
+
+
+def get_glove_cache():
+    path = osp.split(osp.realpath(__file__))[0]
+    path = osp.abspath(osp.join(path, "..", ".vector_cache"))
+    return path
+
+
+def get_glove_vectors(vocab, cache=get_glove_cache()):
+    glove = GloVe(name='840B', dim=300, cache=cache) 
+    vectors = np.zeros((len(vocab), 300))
+    count = 0
+    for word, idx in vocab.w2i.items():
+        vector = None
+        if word == "<pad>" or "<PAD>":
+            continue
+        if word == "<unk>" or "<UNK>":
+            word = "unk"
+            vector = glove.vectors[glove.stoi[word]]
+        if not (word in glove.stoi):
+            count += 1
+            vector = np.random.randn(GLOVE_DIM)
+        if vector is None:
+            vector = glove.vectors[glove.stoi[word]]
+        vectors[idx, :] = vector
+    return torch.tensor(vectors, dtype=torch.float)
 
 
 class MLP(nn.Module):
@@ -49,8 +84,15 @@ class MLP(nn.Module):
 class LSTMEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.embedding = nn.Embedding(
-            config["vocab_size"], config["embed_size"], padding_idx=0)
+        if config.get("glove", False):
+            config["embed_size"] = GLOVE_DIM
+            vectors = get_glove_vectors(config["vocab"])
+            self.embedding = nn.Embedding.from_pretrained(vectors)
+        else:
+            self.embedding = nn.Embedding(
+                num_embeddings=config["vocab_size"],
+                embedding_dim=config["embed_size"],
+                padding_idx=0)
         self.lstm = nn.LSTM(
             config["embed_size"],
             config["hidden_size"],
@@ -62,6 +104,20 @@ class LSTMEncoder(nn.Module):
     def forward(self, x, x_l):
         embed = pack_padded_sequence(self.embedding(x), x_l, batch_first=True) 
         return self.lstm(embed)
+
+
+class BERTEncoder(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.bert = AutoModel.from_pretrained("bert-base-uncased")
+        for p in self.bert.parameters():
+            p.requires_grad = False
+        self.config = config
+        self.output_size = 768
+
+    def forward(self, x, x_l):
+        output = self.bert(input_ids=x, attention_mask=x_l)
+        return output
 
 
 class CNN2Dv1(nn.Module):

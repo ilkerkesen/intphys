@@ -136,3 +136,4 @@ dmypy.json
 bin/debug
 *~
 .vscode
+.vector_cache

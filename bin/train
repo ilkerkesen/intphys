@@ -14,7 +14,6 @@ import hydra
 from omegaconf import OmegaConf
 
 from intphys import *
-from intphys.data import train_collate_fn as collate_fn
 from intphys.data import *
 from intphys.experiment import Experiment
 from intphys.datamodule import DataModule
@@ -46,6 +45,7 @@ def train(config):
     # load data
     dm = DataModule(config)
     dm.setup(stage="fit")
+    config["model"]["question_encoder"]["vocab"] = dm.train_data.question_vocab
 
     # logger
     config["logger"]["save_dir"] = osp.abspath(
