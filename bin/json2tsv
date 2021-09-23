@@ -18,8 +18,10 @@ def json2tsv(path, split_info="random"):
             "video_index",
             "question_index",
             "split",
+            "simulation_id",
             "question_type",
             "question_family_index",
+            "template_id",
             "question",
             "answer",
         )

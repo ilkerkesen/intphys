@@ -6,6 +6,28 @@ import click
 from copy import deepcopy
 from itertools import product
 
+QUESTION_CATEGORIES = {
+    'C/A': (0, 1),  # cause, action
+    'C/N': (3, 4),  # cause, number
+    
+    'E/A': (0, 1),  # enable, action
+    'E/N': (3, 4),  # enable, action
+    
+    'P/A': (0, 1),  # prevent, action
+    'P/N': (3, 4),  # prevent, number
+    
+    'CF/N': (3, 4),  # counterfactual, number
+    'CF/O': (0, 1, 6, 7),  # counterfactual, objects
+    
+    'D/C': (22, 23),  # description, color
+    'D/S': (24, 25),  # description, shape
+    'D/2Qs': (0, 1, 2, 3),  # description, two questions
+    'D/N-V': (4, 5, 6, 7, 8, 9, 10, 11),  # description, number-verb
+    'D/N-T': (16, 17, 18, 19),  # description, temporal sequence
+    'D/TO': (38, 39),  # description, temporal order
+    'D/C-T': (26, 27, 28, 29, 32, 33, 34, 35),  # cause - temporal seq.
+}
+
 
 def parse_line(l):
     return l.strip().split('\t')
@@ -37,12 +59,40 @@ def read_file(f):
     f.close()
     return lines2records(headers, lines)
 
+
+def eval_attribute_scores(records, attribute, header_type=str):
+    num_correct, num_examples = dict(), dict()
+    for (k, v) in records.items():
+        if attribute in v.keys():
+            attr_val = header_type(v[attribute])
+        elif attribute == "question_category":
+            attr_val = header_type(find_question_cat(v["template_id"]))
+        num_examples[attr_val] = 1 + num_examples.get(attr_val, 0)
+        if v["answer"] == v["prediction"]:
+            num_correct[attr_val] = 1 + num_correct.get(attr_val, 0)
+    headers = sorted(list(num_examples.keys()))
+    scores = [num_correct.get(k, 0) / num_examples[k] for k in headers]
+    scores = [round(100 * score, 2) for score in scores]
+    print(",".join(map(str, headers)))
+    print(",".join(map(str, scores)))
+    
+
+def find_question_cat(template_id):
+    task, tid = template_id.split("_")
+    task, tid = task.lower(), int(tid)
+    task = task[0].upper() if task != "counterfactual" else "CF"
+    keys = [k for k in QUESTION_CATEGORIES.keys() if k.startswith(task)]
+    for k in keys:
+        if tid in QUESTION_CATEGORIES[k]:
+            return k
+    return -1
+
+
 @click.command()
 @click.argument("answers-file", type=click.File("r"))
 @click.argument("predictions-file", type=click.File("r"))
-@click.option("--mode", default="split")
 @click.option("-d", "--delimiter", default="tab")
-def main(answers_file, predictions_file, mode, delimiter):
+def main(answers_file, predictions_file, delimiter):
     delimiter = "\t" if delimiter == "tab" else delimiter
     delimiter = "," if delimiter == "comma" else delimiter
     answers = read_file(answers_file)
@@ -57,20 +107,11 @@ def main(answers_file, predictions_file, mode, delimiter):
         if v["prediction"] == v["answer"]:
             num_correct += 1
     overall_acc = round(100 * num_correct / len(merged), 2)
+    print("accuracy={}%\n".format(overall_acc))
 
-    task_num_correct, task_num_examples = dict(), dict()
-    for (k, v) in merged.items():
-        task = v["template"]
-        task_num_examples[task] = 1 + task_num_examples.get(task, 0)
-        if v["prediction"] == v["answer"]:
-            task_num_correct[task] = 1 + task_num_correct.get(task, 0)
-    tasks = sorted(list(task_num_examples.keys()))
-    for task in tasks:
-        num_examples = task_num_examples[task]
-        num_correct = task_num_correct.get(task, 0)
-        task_acc = round(100 * num_correct / num_examples, 2)
-        print("{}={}%".format(task, task_acc))
-    print("overall={}%".format(overall_acc))
+    eval_attribute_scores(merged, "template"); print()
+    eval_attribute_scores(merged, "simulation_id", int)
+    eval_attribute_scores(merged, "question_category")
 
 
 if __name__ == "__main__":
