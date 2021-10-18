@@ -48,6 +48,7 @@ class SimulationInput(IntEnum):
     LAST_FRAME = 2
     FIRST_AND_LAST_FRAMES = 3
     VIDEO = 4
+    DESCRIPTION = 5
 
     def from_string(obj):
         if isinstance(obj, int) or isinstance(obj, SimulationInput):
@@ -115,8 +116,9 @@ class BaseDataset(data.Dataset):
     HEIGHT = 0
     WIDTH = 0
 
-    def __init__(self, path, split="train", fps=0, cached=False, transform=None,
-                 split_info="random", ngram=1, *args, **kwargs):
+    def __init__(self, path, split="train", fps=0, cached=False,
+                 transform=None, split_info="random", ngram=1,
+                 description_mode="simplest", *args, **kwargs):
         super().__init__()
         self.datadir = osp.abspath(osp.expanduser(path))
         self.split = split
@@ -128,6 +130,7 @@ class BaseDataset(data.Dataset):
         self.transform = transform
         self.use_bert = False
         self.ngram = ngram
+        self.description_mode = description_mode
 
         self.read_jsonfile()
         self.build_vocabs()
@@ -221,6 +224,11 @@ class CRAFT(BaseDataset):
     HEIGHT = 256
     WIDTH = 256
 
+    def adapt2model(self, model):
+        super().adapt2model(model)
+        if self.sim_input == SimulationInput.DESCRIPTION:
+            self.load_descriptions()
+
     def read_jsonfile(self):
         with open(osp.join(self.datadir, "dataset_minimal.json")) as f:
             self.json_data = json.load(f)
@@ -258,6 +266,14 @@ class CRAFT(BaseDataset):
         for item in tqdm(items):
             if item["video_index"] in self.cache.keys(): continue
             self.cache[item['video_index']] = self.read_simulation(item["video_file_path"])
+            
+    def load_descriptions(self):
+        filepath = osp.join(self.datadir, f"{self.description_mode}.json")
+        with open(filepath) as f:
+            self.descriptions = json.load(f)
+            
+    def read_description(self):
+        import ipdb; ipdb.set_trace()
         
     def get_frame_path(self, path, frame="first"):
         path = path.replace("videos", frame + "_frames").replace("mpg", "png")

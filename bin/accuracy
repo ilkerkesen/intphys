@@ -9,16 +9,16 @@ from itertools import product
 QUESTION_CATEGORIES = {
     'C/A': (0, 1),  # cause, action
     'C/N': (3, 4),  # cause, number
-    
+
     'E/A': (0, 1),  # enable, action
     'E/N': (3, 4),  # enable, action
-    
+
     'P/A': (0, 1),  # prevent, action
     'P/N': (3, 4),  # prevent, number
-    
+
     'CF/N': (3, 4),  # counterfactual, number
     'CF/O': (0, 1, 6, 7),  # counterfactual, objects
-    
+
     'D/C': (22, 23),  # description, color
     'D/S': (24, 25),  # description, shape
     'D/2Qs': (0, 1, 2, 3),  # description, two questions
@@ -75,7 +75,7 @@ def eval_attribute_scores(records, attribute, header_type=str):
     scores = [round(100 * score, 2) for score in scores]
     print(",".join(map(str, headers)))
     print(",".join(map(str, scores)))
-    
+
 
 def find_question_cat(template_id):
     task, tid = template_id.split("_")
