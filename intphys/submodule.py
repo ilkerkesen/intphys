@@ -102,7 +102,9 @@ class LSTMEncoder(nn.Module):
         self.output_size = (1+config["bidirectional"]) * config["hidden_size"]
 
     def forward(self, x, x_l):
-        embed = pack_padded_sequence(self.embedding(x), x_l, batch_first=True) 
+        embed = self.embedding(x)
+        embed = pack_padded_sequence(
+            embed, x_l, batch_first=True, enforce_sorted=False)
         return self.lstm(embed)
 
 

@@ -48,6 +48,7 @@ class SimulationInput(IntEnum):
     LAST_FRAME = 2
     FIRST_AND_LAST_FRAMES = 3
     VIDEO = 4
+    DESCRIPTION = 5
 
     def from_string(obj):
         if isinstance(obj, int) or isinstance(obj, SimulationInput):
@@ -115,8 +116,9 @@ class BaseDataset(data.Dataset):
     HEIGHT = 0
     WIDTH = 0
 
-    def __init__(self, path, split="train", fps=0, cached=False, transform=None,
-                 split_info="random", ngram=1, *args, **kwargs):
+    def __init__(self, path, split="train", fps=0, cached=False,
+                 transform=None, split_info="random", ngram=1,
+                 description_mode="simplest", *args, **kwargs):
         super().__init__()
         self.datadir = osp.abspath(osp.expanduser(path))
         self.split = split
@@ -128,6 +130,9 @@ class BaseDataset(data.Dataset):
         self.transform = transform
         self.use_bert = False
         self.ngram = ngram
+
+        assert description_mode in ("full", "simple", "simplest")        
+        self.description_mode = description_mode
 
         self.read_jsonfile()
         self.build_vocabs()
@@ -143,6 +148,8 @@ class BaseDataset(data.Dataset):
         if isinstance(model.question_encoder, BERTEncoder):
             self.use_bert = True
             self.bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+        
+        self.use_descriptions = hasattr(model, 'description_encoder')
 
     def read_jsonfile(self):
         raise NotImplementedError
@@ -171,8 +178,8 @@ class BaseDataset(data.Dataset):
         return self.read_frame(path, frame="last")
 
     def read_first_and_last_frames(self, path):
-        first_frame = self.read_first_frame(item)
-        last_frame = self.read_last_frame(item)
+        first_frame = self.read_first_frame(path)
+        last_frame = self.read_last_frame(path)
         return (first_frame, last_frame)
 
     def read_video(self, path):
@@ -220,6 +227,11 @@ class CRAFT(BaseDataset):
     NUM_SECONDS = 10
     HEIGHT = 256
     WIDTH = 256
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.load_descriptions()
+        self.use_descriptions = False
 
     def read_jsonfile(self):
         with open(osp.join(self.datadir, "dataset_minimal.json")) as f:
@@ -258,6 +270,19 @@ class CRAFT(BaseDataset):
         for item in tqdm(items):
             if item["video_index"] in self.cache.keys(): continue
             self.cache[item['video_index']] = self.read_simulation(item["video_file_path"])
+            
+    def load_descriptions(self):
+        filepath = osp.join(
+            self.datadir,
+            "descriptions",
+            f"{self.description_mode}.json",
+        )
+        with open(filepath) as f:
+            self.descriptions = json.load(f)
+
+        self.description_vocab = Vocab(
+            [v for v in self.descriptions.values()],
+            ngram=self.ngram)
         
     def get_frame_path(self, path, frame="first"):
         path = path.replace("videos", frame + "_frames").replace("mpg", "png")
@@ -276,6 +301,8 @@ class CRAFT(BaseDataset):
 
     def __getitem__(self, idx):
         item = self.questions[idx]
+        
+        # read simulation
         if self.cached and item["video_index"] in self.cache.keys():
             simulation = self.cache[item["video_index"]]
         elif not self.cached:
@@ -285,6 +312,8 @@ class CRAFT(BaseDataset):
                 self.split, item["video_index"]))
         if isinstance(simulation, torch.Tensor):
             simulation = (simulation,)
+        
+        # read question / answer
         if self.use_bert:
             input_dict = self.bert_tokenizer(item["question"])
             question = input_dict["input_ids"]
@@ -293,6 +322,16 @@ class CRAFT(BaseDataset):
             question = self.question_vocab[item["question"]]
             length = len(question)
         answer = self.answer_vocab[self.answer_vocab.tokenizer(str(item["answer"]))]
+        
+        # read descriptions
+        descriptions = descriptions_l = None
+        if not self.use_bert:
+            video_index = f"{item['video_index']:06d}"
+            description = self.descriptions[video_index]
+            description = self.description_vocab[description]
+            description_l = len(description)
+            description = torch.tensor(description)
+        
         item_dict = {
             "simulation": simulation,
             "question": torch.tensor(question),
@@ -302,6 +341,8 @@ class CRAFT(BaseDataset):
             "template": item["question_type"].lower(),
             "video_index": item["video_index"],
             "question_index": item["question_index"],
+            "description": description,
+            "description_length": description_l,
         }
         return item_dict
 
@@ -405,8 +446,9 @@ class CLEVRER(BaseDataset):
         return item_dict
 
 
-def make_sentence_batch(batch, batch_first=True, pad_right=False):
-    batchsize, longest = len(batch), len(batch[0])
+def make_sentence_batch(batch, batch_first=True, pad_right=True):
+    batchsize = len(batch)
+    longest = max([len(x) for x in batch])
     sentences = torch.zeros((batchsize, longest), dtype=torch.long)
     for (i, sentence) in enumerate(batch):
         if not pad_right:
@@ -441,6 +483,7 @@ def base_collate_fn(batch):
 
     return (simulations, questions, lengths, answers)
 
+
 def train_collate_fn(unsorted_batch):
     unsorted_batch = [x for x in unsorted_batch if x is not None]
     batch = sorted(unsorted_batch,
@@ -448,7 +491,17 @@ def train_collate_fn(unsorted_batch):
                    key=lambda x: len(x["question"]),
                    reverse=True)
     simulations, questions, lengths, answers = base_collate_fn(batch)
-    additional = {"kwargs": {}}
+    
+    # description batching
+    descriptions = descriptions_l = None
+    if batch[0].get("description") is not None:
+        descriptions = make_sentence_batch([x["description"] for x in batch])
+        descriptions_l = [x["description_length"] for x in batch]    
+    
+    additional = {"kwargs": {
+        "descriptions": descriptions,
+        "descriptions_l": descriptions_l,
+    }}
     inputs, outputs = (simulations, questions, lengths, additional), (answers,)
     return (inputs, outputs)
 
@@ -459,10 +512,20 @@ def inference_collate_fn(unsorted_batch):
                    key=lambda x: len(x["question"]),
                    reverse=True)
     simulations, questions, lengths, answers = base_collate_fn(batch)
+    
+    # description batching
+    descriptions = descriptions_l = None
+    if batch[0].get("description") is not None:
+        descriptions = make_sentence_batch(x["descriptions"] for x in batch)
+        descriptions_l = [x["description_length"] for x in batch]    
+    
     additional = {
         "video_indexes": [x["video_index"] for x in batch],
         "question_indexes": [x["question_index"] for x in batch],
-        "kwargs": {},
+        "kwargs": {
+            "descriptions": descriptions,
+            "descriptions_l": descriptions_l,
+        },
     }
     inputs, outputs = (simulations, questions, lengths, additional), (answers,)
     return (inputs, outputs)

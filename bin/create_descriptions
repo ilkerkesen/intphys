@@ -1,0 +1,109 @@
+#!/usr/bin/env python
+
+import json
+import os.path as osp
+import click
+from tqdm import tqdm
+
+
+IGNORED_OBJECTS = (
+    "wall_l",
+    "wall_r",
+    "platform",
+    "ramp",
+    "static_ball",
+)
+
+
+IGNORED_EVENTS = (
+    "Start",
+    "End",
+    "StartTouching",
+    "EndTouching",
+)
+
+
+def create_object_description(obj):
+    shape = obj["shape"]
+    
+    if shape == "wall_l":
+        return "left wall"
+    
+    if shape == "wall_r":
+        return "right wall"
+    
+    if shape in ("platform", "ground", "ramp", "basket"):
+        return shape
+    
+    if shape == "static_ball":
+        return "static ball"
+    
+    size, color = obj["size"], obj["color"]
+    return f"{size} {color} {shape}".lower()
+
+
+def create_description(sim, mode="full"):
+    assert mode in ("full", "simple", "simplest")
+    
+    nodes = sim["causal_graph"]["nodes"][1:-1]
+    objects = sim["scene_states"][0]["scene"]["objects"]
+    obj_dict, obj_desc, is_moving = dict(), dict(), dict()
+    for obj in objects:
+        obj_id = obj["uniqueID"]
+        obj_dict[obj_id] = obj
+        obj_desc[obj_id] = create_object_description(obj)
+        is_moving 
+    description, prev = "Start.", ""
+    for node in nodes:
+        obj1_id, obj2_id = node["objects"]
+        obj1, obj2 = obj_desc[obj1_id], obj_desc[obj2_id]
+        event = node["type"]
+        
+        subject = obj_dict[obj1_id]["shape"]
+        if mode in ("simple", "simplest") and subject in IGNORED_OBJECTS:
+            continue
+        
+        if mode == "simplest" and event in IGNORED_EVENTS:
+            continue
+        
+        if event == "Collision":
+            this = f"{obj2} collides with {obj1}."
+        elif event == "ContainerEndUp":
+            this = f"{obj2} enters basket."
+        elif event == "StartTouching":
+            this = f"{obj2} starts touching {obj1}."
+        elif event == "EndTouching":
+            this = f"{obj2} ends touching {obj1}."
+        
+        if this != prev:
+            description += " " + this.capitalize()
+        prev = this
+    description += " End."
+    return description
+
+
+@click.command()
+@click.argument("input", type=click.Path(exists=True))
+@click.argument("output", type=click.Path())
+@click.option("--mode", type=str, default="full")
+def main(input, output, mode):
+    input = osp.abspath(osp.expanduser(input))
+    output = osp.abspath(osp.expanduser(output))
+
+    with open(input, "r") as f:
+        annotations = json.load(f)
+
+    descriptions = dict()
+    for sim_id in tqdm(annotations):
+        sim = annotations[sim_id]["original_video_output"]
+        description = create_description(sim, mode=mode)
+        descriptions[sim_id] = description
+        
+    with open(output, "w") as f:
+        json.dump(descriptions, f)
+    
+    print("done.")
+        
+        
+if __name__ == "__main__":
+    main()

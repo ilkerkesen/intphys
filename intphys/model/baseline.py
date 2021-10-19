@@ -10,6 +10,7 @@ from ..data import SimulationInput
 __all__ = (
     "LSTMBaseline",
     "BERTBaseline",
+    "DescriptionBaseline",
     "LSTMCNNBaselineFF",
     "LSTMCNNBaselineLF",
     "LSTMCNNBaseline2F",
@@ -63,6 +64,47 @@ class BERTBaseline(nn.Module):
         hidden = self.dropout(hidden)
         output = self.linear(hidden)
         return output
+
+
+class DescriptionBaseline(nn.Module):
+    """
+    Use the simulation description.
+    """
+    SIMULATION_INPUT = SimulationInput.NO_FRAMES
+    NUM_VIDEO_FRAMES = 0
+
+    def __init__(self, config):
+        super().__init__()
+        config["description_encoder"] = deepcopy(config["question_encoder"])
+        config["question_encoder"]["vocab_size"] = config["input_size"]
+        config["description_encoder"]["vocab_size"] = config["desc_vocab_size"]
+        self.question_encoder = LSTMEncoder(config["question_encoder"])
+        self.description_encoder = LSTMEncoder(config["description_encoder"])
+        self.linear = nn.Linear(
+            2*self.question_encoder.output_size, config["output_size"])
+        self.dropout = nn.Dropout(p=config["dropout"])
+        self.config = config
+
+    def forward(self, simulations, questions, questions_l, **kwargs):
+        descriptions = kwargs.get("descriptions")
+        descriptions_l = kwargs.get("descriptions_l")
+        assert descriptions is not None and descriptions_l is not None
+        
+        _, (q_hid, _) = self.question_encoder(questions, questions_l)
+        if self.question_encoder.lstm.bidirectional:
+            q_hid = torch.cat([q_hid[0], q_hid[1]], dim=1)
+        else:
+            q_hid = q_hid.squeeze(0)
+
+        _, (d_hid, _) = self.description_encoder(descriptions, descriptions_l)
+        if self.description_encoder.lstm.bidirectional:
+            d_hid = torch.cat([d_hid[0], d_hid[1]], dim=1)
+        else:
+            d_hid = d_hid.squeeze(0)
+        
+        hid = torch.cat([d_hid, q_hid], dim=1)
+        answers = self.linear(self.dropout(hid))
+        return answers
 
 
 class LSTMCNNBaseline(nn.Module):
