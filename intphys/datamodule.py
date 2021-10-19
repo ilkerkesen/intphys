@@ -15,7 +15,10 @@ class DataModule(pl.LightningDataModule):
         image_dim = config.get("image_size", 112)
         transforms = [tr.Resize(image_dim)]
 
-        frame_encoder = config["model"]["frame_encoder"]["architecture"]
+        try:
+            frame_encoder = config["model"]["frame_encoder"]["architecture"]
+        except KeyError:
+            frame_encoder = ""
         normalizer = None
         if frame_encoder.startswith("resnet"):
             normalizer = tr.Normalize(

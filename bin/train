@@ -33,6 +33,8 @@ def adapt2data(config, dataset):
         config["model"]["input_width"] = dataset.WIDTH
     if config["model"].get("input_height") is None:
         config["model"]["input_height"] = dataset.HEIGHT
+    if config["model"].get("desc_vocab_size") is None:
+        config["model"]["desc_vocab_size"] = len(dataset.description_vocab)
     return config
 
 

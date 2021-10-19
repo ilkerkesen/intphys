@@ -5,3 +5,4 @@ params:
   split_info: "random"
   fps: 5
   cached: false
+  description_mode: "simplest"
