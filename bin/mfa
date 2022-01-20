@@ -36,6 +36,8 @@ def main(path, test_split, split_info):
     num_correct, num_examples = dict(), dict()
     for q in test_data.questions:
         subtask = q["question_type"].lower()
+        if subtask in ("enable", "prevent"):
+            subtask = "cause"
         if q["answer"].lower() == most_frequent:
             num_correct[subtask] = 1 + num_correct.get(subtask, 0)
         num_examples[subtask] = 1 + num_examples.get(subtask, 0)
@@ -67,6 +69,8 @@ def main(path, test_split, split_info):
     num_correct, num_examples = dict(), dict() 
     for q in test_data.questions:
         subtask = q["question_type"].lower()
+        if subtask in ("enable", "prevent"):
+            subtask = "cause"
         answer = q["answer"].lower()
         answer_type = q["answer_type"].lower()
         if answer == most_frequent[answer_type]:

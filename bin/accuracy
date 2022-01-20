@@ -7,14 +7,17 @@ from copy import deepcopy
 from itertools import product
 
 QUESTION_CATEGORIES = {
-    'C/A': (0, 1),  # cause, action
-    'C/N': (3, 4),  # cause, number
+    # 'C/A': (0, 1),  # cause, action
+    # 'C/N': (3, 4),  # cause, number
 
-    'E/A': (0, 1),  # enable, action
-    'E/N': (3, 4),  # enable, action
+    # 'E/A': (0, 1),  # enable, action
+    # 'E/N': (3, 4),  # enable, action
 
-    'P/A': (0, 1),  # prevent, action
-    'P/N': (3, 4),  # prevent, number
+    # 'P/A': (0, 1),  # prevent, action
+    # 'P/N': (3, 4),  # prevent, number
+    
+    'C/A': (0, 1),
+    'C/N': (3, 4),
 
     'CF/N': (3, 4),  # counterfactual, number
     'CF/O': (0, 1, 6, 7),  # counterfactual, objects
@@ -60,26 +63,36 @@ def read_file(f):
     return lines2records(headers, lines)
 
 
-def eval_attribute_scores(records, attribute, header_type=str):
+def eval_attribute_scores(records, attribute, header_type=str,
+                          merge_categories=True):
     num_correct, num_examples = dict(), dict()
     for (k, v) in records.items():
         if attribute in v.keys():
             attr_val = header_type(v[attribute])
         elif attribute == "question_category":
             attr_val = header_type(find_question_cat(v["template_id"]))
+            
+        if attr_val in ("enable", "prevent") and merge_categories:
+            attr_val = "cause"
         num_examples[attr_val] = 1 + num_examples.get(attr_val, 0)
         if v["answer"] == v["prediction"]:
             num_correct[attr_val] = 1 + num_correct.get(attr_val, 0)
     headers = sorted(list(num_examples.keys()))
     scores = [num_correct.get(k, 0) / num_examples[k] for k in headers]
     scores = [round(100 * score, 2) for score in scores]
-    print(",".join(map(str, headers)))
-    print(",".join(map(str, scores)))
+    overall_acc = sum(num_correct.values()) / sum(num_examples.values())
+    overall_acc = round(100 * overall_acc, 2)
+    headers.append("overall")
+    scores.append(overall_acc)
+    print(" & ".join(map(str, headers)))
+    print(" & ".join(map(str, scores)))
 
 
 def find_question_cat(template_id):
     task, tid = template_id.split("_")
     task, tid = task.lower(), int(tid)
+    if task in ("enable", "prevent"):
+        task = "cause"
     task = task[0].upper() if task != "counterfactual" else "CF"
     keys = [k for k in QUESTION_CATEGORIES.keys() if k.startswith(task)]
     for k in keys:

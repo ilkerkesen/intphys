@@ -10,7 +10,7 @@ from torchvision.models.video import r3d_18 as _r3d_18
 from torchvision.models.video import r2plus1d_18 as _r2plus1d_18
 from torch.nn.utils.rnn import pack_padded_sequence
 from torchtext.vocab import GloVe
-from transformers import AutoConfig, AutoModel
+from transformers import AutoConfig, AutoModel, BertModel
 
 
 GLOVE_DIM = 300
@@ -23,6 +23,7 @@ __all__ = (
     "resnet101",
     "LSTMEncoder",
     "BERTEncoder",
+    "LongformerEncoder",
     "r3d_18",
     "r2plus1d_18",
     "FiLMLayer",
@@ -109,18 +110,41 @@ class LSTMEncoder(nn.Module):
 
 
 class BERTEncoder(nn.Module):
+    MODEL = 'bert-base-uncased'
+    
     def __init__(self, config):
         super().__init__()
-        self.bert = AutoModel.from_pretrained("bert-base-uncased")
-        for p in self.bert.parameters():
-            p.requires_grad = False
         self.config = config
-        self.output_size = 768
+        self.init_bert()
+        self.bert = AutoModel.from_pretrained(self.MODEL)
+        finetune = config.get('finetune', True)
+        if not finetune:
+            for p in self.bert.parameters():
+                p.requires_grad = False
+                
+    def init_bert(self):
+        if self.config.get('pretrained', True):
+            self.bert = AutoModel.from_pretrained()
+        else:
+            bert_config = AutoConfig.from_pretrained(self.MODEL)
+            self.bert = BertModel(bert_config)
+            
+    @property
+    def is_pretrained(self):
+        return self.config.get('pretrained', True)
+    
+    @property
+    def output_size(self):
+        return 768
 
     def forward(self, x, x_l):
         output = self.bert(input_ids=x, attention_mask=x_l)
         return output
+    
 
+class LongformerEncoder(BERTEncoder):
+    MODEL = 'allenai/longformer-base-4096'
+    
 
 class CNN2Dv1(nn.Module):
     def __init__(self, config):
