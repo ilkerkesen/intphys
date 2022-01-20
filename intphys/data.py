@@ -15,7 +15,7 @@ import cv2
 from tqdm import tqdm
 from torchtext.data import get_tokenizer
 from transformers import AutoTokenizer
-from intphys.submodule import BERTEncoder
+from intphys.submodule import BERTEncoder, LongformerEncoder
 
 
 UNK = "<UNK>"
@@ -148,8 +148,13 @@ class BaseDataset(data.Dataset):
         if isinstance(model.question_encoder, BERTEncoder):
             self.use_bert = True
             self.bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+        elif isinstance(model.question_encoder, LongformerEncoder):
+            self.use_bert = True
+            self.bert_tokenizer = AutoTokenizer.from_pretrained("allenai/longformer-base-4096")
         
-        self.use_descriptions = hasattr(model, 'description_encoder')
+        has_description_encoder = hasattr(model, 'description_encoder')
+        insert_descriptions = model.config.get('use_descriptions', False)
+        self.use_descriptions = has_description_encoder or insert_descriptions
 
     def read_jsonfile(self):
         raise NotImplementedError
@@ -295,7 +300,23 @@ class CRAFT(BaseDataset):
             path = path.replace(".mpg", ".mp4")
         path = osp.abspath(osp.join(self.datadir, path))
         return path
-
+    
+    def truncate(self, input_dict):
+        if self.bert_tokenizer.name_or_path != 'bert-base-uncased':
+            return input_dict
+        
+        max_len = 512
+        if len(input_dict['input_ids']) <= max_len:
+            return input_dict
+        
+        input_ids = input_dict['input_ids']
+        input_ids = input_ids[:1] + input_ids[-max_len+1:]
+        attention_mask = input_dict['attention_mask']
+        attention_mask = attention_mask[:1] + attention_mask[-max_len+1:]
+        input_dict['input_ids'] = input_ids
+        input_dict['attention_mask'] = attention_mask
+        return input_dict
+    
     def __len__(self):
         return len(self.questions)
 
@@ -315,7 +336,13 @@ class CRAFT(BaseDataset):
         
         # read question / answer
         if self.use_bert:
-            input_dict = self.bert_tokenizer(item["question"])
+            question = item["question"]
+            if self.use_descriptions:
+                video_index = f"{item['video_index']:06d}"
+                description = self.descriptions[video_index]
+                question = description + ' ' + question
+            input_dict = self.bert_tokenizer(question)
+            input_dict = self.truncate(input_dict)
             question = input_dict["input_ids"]
             length = input_dict["attention_mask"]
         else:
@@ -324,8 +351,8 @@ class CRAFT(BaseDataset):
         answer = self.answer_vocab[self.answer_vocab.tokenizer(str(item["answer"]))]
         
         # read descriptions
-        descriptions = descriptions_l = None
-        if not self.use_bert:
+        description = description_l = None
+        if self.use_descriptions and not self.use_bert:
             video_index = f"{item['video_index']:06d}"
             description = self.descriptions[video_index]
             description = self.description_vocab[description]
@@ -516,7 +543,7 @@ def inference_collate_fn(unsorted_batch):
     # description batching
     descriptions = descriptions_l = None
     if batch[0].get("description") is not None:
-        descriptions = make_sentence_batch(x["descriptions"] for x in batch)
+        descriptions = make_sentence_batch([x["description"] for x in batch])
         descriptions_l = [x["description_length"] for x in batch]    
     
     additional = {

@@ -4,6 +4,7 @@ input_size: null
 output_size: null
 pool_size: 5
 dropout: 0.2
+use_descriptions: false
 question_encoder:
   architecture: LSTMEncoder
   hidden_size: 256
@@ -11,6 +12,8 @@ question_encoder:
   vocab_size: null
   bidirectional: false
   glove: false
+  finetune: true
+  pretrained: true
 frame_encoder:
   architecture: resnet18
   input_size: 256

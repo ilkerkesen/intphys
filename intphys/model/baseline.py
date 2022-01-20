@@ -50,7 +50,12 @@ class BERTBaseline(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.question_encoder = BERTEncoder(config["question_encoder"])
+        transformer = config["question_encoder"].get("architecture")
+        if transformer == "LSTMEncoder":
+            transformer = "BERTEncoder"
+        assert transformer in ("BERTEncoder", "LongformerEncoder")
+        transformer = eval(transformer)
+        self.question_encoder = transformer(config["question_encoder"])
         self.linear = nn.Linear(
             self.question_encoder.output_size,
             config["output_size"],

@@ -8,6 +8,8 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import pytorch_lightning as pl
+
+from intphys.submodule import BERTEncoder
 from .model import *
 
 
@@ -46,9 +48,15 @@ class Experiment(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = eval("torch.optim.{}".format(
             self.config["optimizer"]["method"]))
-        optimizers = [optimizer(
-            self.model.parameters(),
-            **self.config["optimizer"]["params"])]
+        
+        params = list()
+        for c in self.model.children():
+            p = {"params": c.parameters()}
+            if issubclass(type(c), BERTEncoder):
+                p["lr"] = 5e-5
+            params.append(p)
+        
+        optimizers = [optimizer(params,**self.config["optimizer"]["params"])]
         if self.config.get("scheduler") is None: return optimizers, []
         
         scheduler = eval("torch.optim.lr_scheduler.{}".format(
